@@ -1,13 +1,12 @@
+#include <SDL3/SDL.h>
 #include <SDL3/SDL_error.h>
 #include <SDL3/SDL_init.h>
 #include <SDL3/SDL_render.h>
 #include <SDL3/SDL_timer.h>
 #include <SDL3/SDL_video.h>
-#include <iostream>
-#include <SDL3/SDL.h>
-#include <SDL3/SDL_main.h>
 #include <SDL3_ttf/SDL_ttf.h>
-#include <ostream>
+#include <iostream>
+#include <SDL3/SDL_main.h>
 class Colpachki {
     public:
         
@@ -30,24 +29,32 @@ int main(int argc, char *argv[]){
         SDL_Quit();
         return -1;
     }
+
     SDL_Renderer* renderer = SDL_CreateRenderer(window, nullptr);
     if(!renderer){
         std::cerr<<"renderer creation failed: "<<SDL_GetError()<<std::endl;
-    SDL_DestroyWindow(window);
-    TTF_Quit();
-    SDL_Quit();
-    return -1;
+        SDL_DestroyWindow(window);
+        TTF_Quit();
+        SDL_Quit();
+        return -1;
     }
+
     TTF_Font* font = TTF_OpenFont("/usr/share/fonts/TTF/Hack-Regular.ttf", 36);
     if(!font){
         std::cerr<<"font failed: "<<SDL_GetError()<<std::endl;
+        SDL_DestroyRenderer(renderer);
+        SDL_DestroyWindow(window);
+        TTF_Quit();
+        SDL_Quit();
+        return -1;
     }
+
     Colpachki ui(renderer, font);
     bool d = 0;
     Uint32 lastTime = SDL_GetTicks();
     while(!d){
         Uint32 crntTime = SDL_GetTicks();
-        float deltaTime;
+        float deltaTime = (crntTime - lastTime)/1000.0f;
         lastTime = crntTime;
         
         SDL_Event event;
