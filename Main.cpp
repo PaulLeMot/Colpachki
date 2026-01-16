@@ -8,7 +8,14 @@
 #include <iostream>
 #include <SDL3/SDL_main.h>
 class Colpachki {
+    SDL_Renderer* m_renderer;
+    TTF_Font* m_font;
     public:
+    Colpachki(SDL_Renderer* renderer, TTF_Font* font) : m_renderer(renderer), m_font(font){}
+    
+
+
+};
         
 int main(int argc, char *argv[]){
     if(!SDL_Init(SDL_INIT_VIDEO)){
