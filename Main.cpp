@@ -7,16 +7,23 @@
 #include <SDL3_ttf/SDL_ttf.h>
 #include <iostream>
 #include <SDL3/SDL_main.h>
+#include <vector>
 class Colpachki {
     SDL_Renderer* m_renderer;
     TTF_Font* m_font;
     public:
     Colpachki(SDL_Renderer* renderer, TTF_Font* font) : m_renderer(renderer), m_font(font){}
-    void Render(const float windowWidth, const float windowHeight){
-
+    void Render(const float width, const float height){
+    SDL_SetRenderDrawColor(m_renderer, 0, 0, 100, 255);
+    SDL_RenderClear(m_renderer);
+    SDL_SetRenderDrawColor(m_renderer, 240, 240, 240, 21);
+    for(int i=0;i<3;++i){
+    SDL_FRect buttonRect = {width/3, height/8+(height/10+((height/8)*i)), width/3, height/10};
+    SDL_RenderFillRect(m_renderer, &buttonRect);
+    }
     }
  
-    void HandleEvent(const SDL_Event& event) {
+    /*void HandleEvent(const SDL_Event& event) {
         if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
             int mouseX = static_cast<int>(event.button.x);
             int mouseY = static_cast<int>(event.button.y);
@@ -29,6 +36,100 @@ class Colpachki {
             HandleKeyPress(event.key);
         }
     }
+    private:
+    std::vector<std::string> m_buttons;
+    void InitButtons() {
+        m_buttons = {
+            "Play", "Options", "Exit"
+        };
+    }
+    int GetButtonAt(int mouseX, int mouseY) {
+        int totalButtons = static_cast<int>(m_buttons.size());
+        int columns = 6;
+        int rows = 5;
+
+        const float windowWidth = 680;
+        const float windowHeight = 800;
+        const float buttonHeight = windowHeight / (rows + 1);
+        const float buttonWidth = windowWidth / columns;
+
+        for (int i = 0; i < totalButtons; ++i) {
+            int row = i / columns;
+            int col = i % columns;
+
+            float x = col * buttonWidth + 10;
+            float y = (row + 1) * buttonHeight + 10;
+            float w = buttonWidth - 20;
+            float h = buttonHeight - 20;
+
+            if (mouseX >= x && mouseX <= x + w && mouseY >= y && mouseY <= y + h) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    void HandleKeyPress(const SDL_KeyboardEvent& keyEvent) {
+        SDL_Keycode key = keyEvent.key;
+        
+        switch (key) {
+            case SDLK_UP:
+                if (m_cursorPos > 0) {
+                    m_cursorPos--;
+                    ResetCursorBlink();
+                }
+                break;
+                
+            case SDLK_DOWN:
+                if (m_cursorPos < m_display.length()) {
+                    m_cursorPos++;
+                    ResetCursorBlink();
+                }
+                break;
+                
+            case SDLK_HOME:
+                m_cursorPos = 0;
+                ResetCursorBlink();
+                break;
+                
+            case SDLK_END:
+                m_cursorPos = m_display.length();
+                ResetCursorBlink();
+                break;
+                
+            case SDLK_BACKSPACE:
+                if (m_cursorPos > 0 && m_cursorPos <= m_display.length()) {
+                    m_display.erase(m_cursorPos - 1, 1);
+                    m_cursorPos--;
+                    ResetCursorBlink();
+                    if (m_display.empty()) {
+                        m_display = "0";
+                        m_cursorPos = 1;
+                    }
+                }
+                break;
+                
+            case SDLK_DELETE:
+                if (m_cursorPos < m_display.length()) {
+                    m_display.erase(m_cursorPos, 1);
+                    ResetCursorBlink();
+                    if (m_display.empty()) {
+                        m_display = "0";
+                        m_cursorPos = 1;
+                    }
+                }
+                break;
+                
+            case SDLK_ESCAPE:
+                m_displayHasFocus = false;
+                break;
+                
+            case SDLK_RETURN:
+            case SDLK_KP_ENTER:
+                OnButtonPressed("=");
+                break;
+        }
+    }*/
 };
         
 int main(int argc, char *argv[]){
@@ -40,9 +141,8 @@ int main(int argc, char *argv[]){
         std::cerr<<"TTF_Init Failed: "<<SDL_GetError()<<std::endl;
         return -1;
     }
-    const float windowWidth = 680;
-    const float windowHeight = 800;
-    SDL_Window* window = SDL_CreateWindow("Colpachki", windowWidth, windowHeight, 0);
+
+    SDL_Window* window = SDL_CreateWindow("Colpachki", 0, 0, SDL_WINDOW_FULLSCREEN);
     if(!window){
         std::cerr<<"Window creation failed: "<<SDL_GetError()<<std::endl;
         SDL_DestroyWindow(window);
@@ -50,6 +150,13 @@ int main(int argc, char *argv[]){
         SDL_Quit();
         return -1;
     }
+    int width, height;
+    SDL_SetWindowFullscreen(window, 1);
+    if (SDL_GetWindowSizeInPixels(window, &width, &height)) {
+    } else {
+        std::cerr<<"problem with window size: "<<SDL_GetError()<<std::endl;
+    }
+    std::cout<<width<<" "<<height<<std::endl;
 
     SDL_Renderer* renderer = SDL_CreateRenderer(window, nullptr);
     if(!renderer){
@@ -69,7 +176,6 @@ int main(int argc, char *argv[]){
         SDL_Quit();
         return -1;
     }
-
     Colpachki ui(renderer, font);
     bool d = 0;
     Uint32 lastTime = SDL_GetTicks();
@@ -83,11 +189,9 @@ int main(int argc, char *argv[]){
                 if (event.type == SDL_EVENT_QUIT) {
                     d = true;
                 }
-                ui.HandleEvent(event);
+                //ui.HandleEvent(event);
         }
-        SDL_SetRenderDrawColor(renderer,0,0,0, 255);
-        SDL_RenderClear(renderer);
-        ui.Render(windowWidth, windowHeight);
+        ui.Render(width, height);
         SDL_RenderPresent(renderer);
         SDL_Delay(32);
     }
