@@ -12,9 +12,23 @@ class Colpachki {
     TTF_Font* m_font;
     public:
     Colpachki(SDL_Renderer* renderer, TTF_Font* font) : m_renderer(renderer), m_font(font){}
-    
+    void Render(const float windowWidth, const float windowHeight){
 
-
+    }
+ 
+    void HandleEvent(const SDL_Event& event) {
+        if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
+            int mouseX = static_cast<int>(event.button.x);
+            int mouseY = static_cast<int>(event.button.y);
+            int buttonIndex = GetButtonAt(mouseX, mouseY);
+            if (buttonIndex != -1) {
+                OnButtonPressed(m_buttons[buttonIndex]);
+            }
+        }
+        else if (event.type == SDL_EVENT_KEY_DOWN) {
+            HandleKeyPress(event.key);
+        }
+    }
 };
         
 int main(int argc, char *argv[]){
@@ -71,9 +85,6 @@ int main(int argc, char *argv[]){
                 }
                 ui.HandleEvent(event);
         }
-
-        ui.Update(deltaTime);
-            
         SDL_SetRenderDrawColor(renderer,0,0,0, 255);
         SDL_RenderClear(renderer);
         ui.Render(windowWidth, windowHeight);
