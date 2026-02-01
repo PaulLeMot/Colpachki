@@ -10,7 +10,7 @@
 #include <vector>
 class Colpachki {
     public:
-    Colpachki(SDL_Renderer* renderer, TTF_Font* font) : m_renderer(renderer), m_font(font){
+    Colpachki(SDL_Renderer* renderer, TTF_Font* font, const float width, const float height) : m_renderer(renderer), m_font(font), m_width(width), m_height(height){
     InitButtons();
         if(m_font){
             LoadButtonTextures();
@@ -19,12 +19,12 @@ class Colpachki {
     ~Colpachki() {
         FreeButtonTextures();
     }
-    void Render(const float width, const float height){
+    void Render(){
     SDL_SetRenderDrawColor(m_renderer, 0, 0, 100, 255);
     SDL_RenderClear(m_renderer);
-    SDL_SetRenderDrawColor(m_renderer, 240, 240, 240, 21);
+    SDL_SetRenderDrawColor(m_renderer, 240, 240, 240, 255);
         for(int i=0;i<3;++i){
-        SDL_FRect buttonRect = {width/3, height/8+(height/10+((height/8)*i)), width/3, height/10};
+        SDL_FRect buttonRect = {m_width/3, m_height/8+(m_height/10+((m_height/8)*i)), m_width/3, m_height/10};
         SDL_RenderFillRect(m_renderer, &buttonRect);
             if (i < static_cast<int>(m_buttonTextures.size()) && m_buttonTextures[i]) {
                 float tw, th;
@@ -37,24 +37,26 @@ class Colpachki {
         }
     }
  
-    /*void HandleEvent(const SDL_Event& event) {
+    void HandleEvent(const SDL_Event& event) {
         if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
             int mouseX = static_cast<int>(event.button.x);
             int mouseY = static_cast<int>(event.button.y);
             int buttonIndex = GetButtonAt(mouseX, mouseY);
             if (buttonIndex != -1) {
                 OnButtonPressed(m_buttons[buttonIndex]);
+
             }
         }
         else if (event.type == SDL_EVENT_KEY_DOWN) {
             HandleKeyPress(event.key);
         }
-    }*/
+    }
     private:
     std::vector<std::string> m_buttons;
     std::vector<SDL_Texture*> m_buttonTextures;
     SDL_Renderer* m_renderer;
     TTF_Font* m_font;
+    const float m_width, m_height;
     void InitButtons() {
         m_buttons = {
             "Play", "Options", "Exit"
@@ -78,25 +80,16 @@ class Colpachki {
         }
         m_buttonTextures.clear();
     }
-    /*
+    
     int GetButtonAt(int mouseX, int mouseY) {
         int totalButtons = static_cast<int>(m_buttons.size());
-        int columns = 6;
-        int rows = 5;
-
-        const float windowWidth = 680;
-        const float windowHeight = 800;
-        const float buttonHeight = windowHeight / (rows + 1);
-        const float buttonWidth = windowWidth / columns;
 
         for (int i = 0; i < totalButtons; ++i) {
-            int row = i / columns;
-            int col = i % columns;
-
-            float x = col * buttonWidth + 10;
-            float y = (row + 1) * buttonHeight + 10;
-            float w = buttonWidth - 20;
-            float h = buttonHeight - 20;
+            
+            float x = m_width/3;
+            float y = m_height/8+(m_height/10+((m_height/8)*i));
+            float w = m_width/3;
+            float h = m_height/10;
 
             if (mouseX >= x && mouseX <= x + w && mouseY >= y && mouseY <= y + h) {
                 return i;
@@ -107,65 +100,30 @@ class Colpachki {
 
     void HandleKeyPress(const SDL_KeyboardEvent& keyEvent) {
         SDL_Keycode key = keyEvent.key;
+        int Current = 0;
         
         switch (key) {
             case SDLK_UP:
-                if (m_cursorPos > 0) {
-                    m_cursorPos--;
-                    ResetCursorBlink();
-                }
+                if (Current !=0) {
+                    Current-=1;
+                }else{Current=2;}
                 break;
                 
             case SDLK_DOWN:
-                if (m_cursorPos < m_display.length()) {
-                    m_cursorPos++;
-                    ResetCursorBlink();
-                }
+                if (Current !=2) {
+                    Current+=1;
+                }else{Current=0;}
                 break;
-                
-            case SDLK_HOME:
-                m_cursorPos = 0;
-                ResetCursorBlink();
-                break;
-                
-            case SDLK_END:
-                m_cursorPos = m_display.length();
-                ResetCursorBlink();
-                break;
-                
-            case SDLK_BACKSPACE:
-                if (m_cursorPos > 0 && m_cursorPos <= m_display.length()) {
-                    m_display.erase(m_cursorPos - 1, 1);
-                    m_cursorPos--;
-                    ResetCursorBlink();
-                    if (m_display.empty()) {
-                        m_display = "0";
-                        m_cursorPos = 1;
-                    }
-                }
-                break;
-                
-            case SDLK_DELETE:
-                if (m_cursorPos < m_display.length()) {
-                    m_display.erase(m_cursorPos, 1);
-                    ResetCursorBlink();
-                    if (m_display.empty()) {
-                        m_display = "0";
-                        m_cursorPos = 1;
-                    }
-                }
-                break;
-                
-            case SDLK_ESCAPE:
-                m_displayHasFocus = false;
-                break;
-                
+
             case SDLK_RETURN:
             case SDLK_KP_ENTER:
-                OnButtonPressed("=");
+                OnButtonPressed(m_buttons[Current]);
                 break;
         }
-    }*/
+    }
+    void OnButtonPressed(std::string button){
+
+    }
 };
         
 int main(int argc, char *argv[]){
@@ -210,7 +168,7 @@ int main(int argc, char *argv[]){
         SDL_Quit();
         return -1;
     }
-    Colpachki ui(renderer, font);
+    Colpachki ui(renderer, font, width, height);
     bool d = 0;
     Uint32 lastTime = SDL_GetTicks();
     while(!d){
@@ -223,9 +181,9 @@ int main(int argc, char *argv[]){
                 if (event.type == SDL_EVENT_QUIT) {
                     d = true;
                 }
-                //ui.HandleEvent(event);
+                ui.HandleEvent(event);
         }
-        ui.Render(width, height);
+        ui.Render();
         SDL_RenderPresent(renderer);
         SDL_Delay(32);
     }
