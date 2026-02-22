@@ -8,44 +8,36 @@
 #include <iostream>
 #include <SDL3/SDL_main.h>
 #include <vector>
-class Colpachki {
+#include "../include/ColpEngine.hpp"
+class MainMenu {
     public:
-    Colpachki(SDL_Renderer* renderer, TTF_Font* font, const float width, const float height) : m_renderer(renderer), m_font(font), m_width(width), m_height(height){
-    InitButtons();
-        if(m_font){
-            LoadButtonTextures();
+    MainMenu(SDL_Renderer* renderer, TTF_Font* font, const float width, const float height) : m_renderer(renderer), m_font(font), m_width(width), m_height(height){
+        InitButtons();
+        for (size_t i = 0; i < m_buttons.size(); ++i) {
+            m_buttonsObjects.emplace_back(
+                m_renderer, m_font, m_buttons[i],
+                m_width, m_height,
+                m_width / 3,
+                m_height / 8 + (m_height / 10 + ((m_height / 8) * i)),
+                m_width / 3, m_height / 10,
+                240, 240, 240
+            );
         }
     }
-    ~Colpachki() {
-        FreeButtonTextures();
-    }
-    void Render(){
-    SDL_SetRenderDrawColor(m_renderer, 0, 0, 100, 255);
-    SDL_RenderClear(m_renderer);
-    SDL_SetRenderDrawColor(m_renderer, 240, 240, 240, 255);
-        for(int i=0;i<3;++i){
-        SDL_FRect buttonRect = {m_width/3, m_height/8+(m_height/10+((m_height/8)*i)), m_width/3, m_height/10};
-        SDL_RenderFillRect(m_renderer, &buttonRect);
-            if (i < static_cast<int>(m_buttonTextures.size()) && m_buttonTextures[i]) {
-                float tw, th;
-                SDL_GetTextureSize(m_buttonTextures[i], &tw, &th);
-                float tx = buttonRect.x + (buttonRect.w - tw) / 2.0f;
-                float ty = buttonRect.y + (buttonRect.h - th) / 2.0f;
-                SDL_FRect textRect = {tx, ty, tw, th};
-                SDL_RenderTexture(m_renderer, m_buttonTextures[i], nullptr, &textRect);
-            }
+    void Render() {
+        SDL_SetRenderDrawColor(m_renderer, 0, 0, 100, 255);
+        SDL_RenderClear(m_renderer);
+        for (auto& button : m_buttonsObjects) {
+            button.RenderButton();
         }
     }
- 
     void HandleEvent(const SDL_Event& event) {
         if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
             int mouseX = static_cast<int>(event.button.x);
             int mouseY = static_cast<int>(event.button.y);
-            int buttonIndex = GetButtonAt(mouseX, mouseY);
-            if (buttonIndex != -1) {
-                OnButtonPressed(m_buttons[buttonIndex]);
-
-            }
+            //int buttonIndex = GetButtonAt(mouseX, mouseY);
+            //if (buttonIndex != -1) {
+            //    OnButtonPressed(m_buttons[buttonIndex]);
         }
         else if (event.type == SDL_EVENT_KEY_DOWN) {
             HandleKeyPress(event.key);
@@ -53,49 +45,14 @@ class Colpachki {
     }
     private:
     std::vector<std::string> m_buttons;
-    std::vector<SDL_Texture*> m_buttonTextures;
     SDL_Renderer* m_renderer;
     TTF_Font* m_font;
     const float m_width, m_height;
+    std::vector<Button> m_buttonsObjects;
     void InitButtons() {
         m_buttons = {
             "Play", "Options", "Exit"
         };
-    }
-    void LoadButtonTextures() {
-        m_buttonTextures.clear();
-        m_buttonTextures.resize(m_buttons.size(), nullptr);
-        SDL_Color color = {0, 0, 0, 255};
-        for (size_t i = 0; i < m_buttons.size(); ++i) {
-            SDL_Surface* surface = TTF_RenderText_Blended(m_font, m_buttons[i].c_str(), 0, color);
-            if (surface) {
-                m_buttonTextures[i] = SDL_CreateTextureFromSurface(m_renderer, surface);
-                SDL_DestroySurface(surface);
-            }
-        }
-    }
-    void FreeButtonTextures() {
-        for (SDL_Texture* tex : m_buttonTextures) {
-            if (tex) SDL_DestroyTexture(tex);
-        }
-        m_buttonTextures.clear();
-    }
-    
-    int GetButtonAt(int mouseX, int mouseY) {
-        int totalButtons = static_cast<int>(m_buttons.size());
-
-        for (int i = 0; i < totalButtons; ++i) {
-            
-            float x = m_width/3;
-            float y = m_height/8+(m_height/10+((m_height/8)*i));
-            float w = m_width/3;
-            float h = m_height/10;
-
-            if (mouseX >= x && mouseX <= x + w && mouseY >= y && mouseY <= y + h) {
-                return i;
-            }
-        }
-        return -1;
     }
 
     void HandleKeyPress(const SDL_KeyboardEvent& keyEvent) {
@@ -168,7 +125,7 @@ int main(int argc, char *argv[]){
         SDL_Quit();
         return -1;
     }
-    Colpachki ui(renderer, font, width, height);
+    MainMenu ui(renderer, font, width, height);
     bool d = 0;
     Uint32 lastTime = SDL_GetTicks();
     while(!d){
