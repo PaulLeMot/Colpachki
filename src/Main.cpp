@@ -35,12 +35,17 @@ class MainMenu {
         if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
             int mouseX = static_cast<int>(event.button.x);
             int mouseY = static_cast<int>(event.button.y);
-            //int buttonIndex = GetButtonAt(mouseX, mouseY);
-            //if (buttonIndex != -1) {
-            //    OnButtonPressed(m_buttons[buttonIndex]);
-        }
-        else if (event.type == SDL_EVENT_KEY_DOWN) {
-            HandleKeyPress(event.key);
+            if (m_buttonsObjects[0].GetButtonAt(mouseX, mouseY)) {
+                OnButtonPressed("Play");
+            }
+            else if (m_buttonsObjects[1].GetButtonAt(mouseX, mouseY)) {
+                OnButtonPressed("Options");
+            }
+            else if (m_buttonsObjects[2].GetButtonAt(mouseX, mouseY)) {
+                SDL_Event quitEvent;
+                quitEvent.type = SDL_EVENT_QUIT;
+                SDL_PushEvent(&quitEvent);
+            }
         }
     }
     private:
@@ -55,7 +60,7 @@ class MainMenu {
         };
     }
 
-    void HandleKeyPress(const SDL_KeyboardEvent& keyEvent) {
+    /*void HandleKeyPress(const SDL_KeyboardEvent& keyEvent) {
         SDL_Keycode key = keyEvent.key;
         int Current = 0;
         
@@ -77,7 +82,7 @@ class MainMenu {
                 OnButtonPressed(m_buttons[Current]);
                 break;
         }
-    }
+    }*/
     void OnButtonPressed(std::string button){
 
     }

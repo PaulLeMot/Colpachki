@@ -70,11 +70,11 @@ class Button{
                 SDL_DestroySurface(surface);
             }
         }
-        std::string GetButtonAt(int mouseX, int mouseY) {
+        bool GetButtonAt(int mouseX, int mouseY) {
             if (mouseX >= x && mouseX <= x + w && mouseY >= y && mouseY <= y + h) {
-                return m_buttonName;
+                return 1;
             }
-            return "";
+            return 0;
         }
     private:
         float x,y,w,h;
