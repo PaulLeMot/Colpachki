@@ -159,10 +159,12 @@ public:
             m_lastDisplayedText = displayText;
         }
 
+        // Рисуем фон
         SDL_SetRenderDrawColor(m_renderer, r, g, b, 255);
         SDL_FRect inputRect = {x, y, w, h};
         SDL_RenderFillRect(m_renderer, &inputRect);
 
+        // Рисуем текст
         if (m_textTexture) {
             float tw, th;
             SDL_GetTextureSize(m_textTexture, &tw, &th);
@@ -170,6 +172,13 @@ public:
             float ty = y + (h - th) / 2.0f;
             SDL_FRect textRect = {tx, ty, tw, th};
             SDL_RenderTexture(m_renderer, m_textTexture, nullptr, &textRect);
+        }
+
+        // Если поле активно, рисуем рамку (визуальный курсор)
+        if (m_active) {
+            SDL_SetRenderDrawColor(m_renderer, 255, 255, 255, 255); // белая рамка
+            SDL_FRect borderRect = {x - 1, y - 1, w + 2, h + 2};
+            SDL_RenderRect(m_renderer, &borderRect);
         }
     }
 
@@ -191,7 +200,7 @@ public:
                 SetActive(false);
             }
         }
-        else if (event.type == SDL_EVENT_TEXT_INPUT && m_active) {
+        else if (event.type == SDL_EVENT_TEXT_INPUT && m_active &&m_inputText.size()<31) {  //maybe fix tho not that important
             m_inputText += event.text.text;
         }
     }

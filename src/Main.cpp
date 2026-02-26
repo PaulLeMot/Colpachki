@@ -89,7 +89,7 @@ class MainMenu {
 class NewGameMenu {
     public:
     NewGameMenu(SDL_Renderer* renderer, TTF_Font* font, const float width, const float height) : m_renderer(renderer), m_font(font), m_width(width), m_height(height){
-        InitButtons();
+        InitObjects();
         for (size_t i = 0; i < m_buttons.size(); ++i) {
             m_buttonsObjects.emplace_back(
                 m_renderer, m_font, m_buttons[i],
@@ -100,12 +100,26 @@ class NewGameMenu {
                 240, 240, 240
             );
         }
+        for(size_t i=0;i<m_inputs.size();++i){
+            m_inputsObjects.emplace_back(
+                m_renderer, m_font, m_inputs[i],
+                m_width, m_height,
+                m_width/8,
+                (m_height/8)+(((m_height/8)+m_height/10)*i),
+                (m_width/8)*6,
+                (m_height/8),
+                0,0,0
+            );
+        }
     }
     void Render() {
-        SDL_SetRenderDrawColor(m_renderer, 20, 150, 20, 255);
+        SDL_SetRenderDrawColor(m_renderer, 0, 0, 100, 255);
         SDL_RenderClear(m_renderer);
         for (auto& button : m_buttonsObjects) {
             button.RenderButton();
+        }
+        for(auto& input : m_inputsObjects){
+            input.RenderInput();
         }
     }
     void HandleEvent(const SDL_Event& event) {
@@ -120,16 +134,24 @@ class NewGameMenu {
 
             }
         }
+        for(auto& input : m_inputsObjects){
+            input.HandleEvent(event);
+        }
     }
     private:
     std::vector<std::string> m_buttons;
+    std::vector<std::string>m_inputs;
     SDL_Renderer* m_renderer;
     TTF_Font* m_font;
     const float m_width, m_height;
     std::vector<Button> m_buttonsObjects;
-    void InitButtons() {
+    std::vector<Input> m_inputsObjects;
+    void InitObjects() {
         m_buttons = {
             "Back", "Play"
+        };
+        m_inputs={
+            "New World", "Seed"
         };
     }
 
@@ -183,6 +205,7 @@ int main(int argc, char *argv[]){
     }
     SDL_Renderer* renderer = SDL_CreateRenderer(window, nullptr);
     SDL_SetRenderVSync(renderer, 1);
+    SDL_StartTextInput(window);
     if(!renderer){
         std::cerr<<"renderer creation failed: "<<SDL_GetError()<<std::endl;
         SDL_DestroyWindow(window);
