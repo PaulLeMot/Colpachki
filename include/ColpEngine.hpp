@@ -90,3 +90,155 @@ class Button{
         }
 
 };
+
+class Input {
+public:
+    Input(SDL_Renderer* renderer,
+          TTF_Font* font,
+          const std::string& placeholder,
+          float width, float height,
+          float x, float y, float w, float h,
+          int r, int g, int b)
+        : m_renderer(renderer), m_font(font), m_placeholder(placeholder),
+          m_width(width), m_height(height), x(x), y(y), w(w), h(h),
+          r(r), g(g), b(b), m_active(false), m_textTexture(nullptr) {
+        if (m_font) {
+            UpdateTexture(m_placeholder);
+        }
+    }
+
+    Input(const Input&) = delete;
+    Input& operator=(const Input&) = delete;
+
+    Input(Input&& other) noexcept
+        : m_renderer(other.m_renderer),
+          m_font(other.m_font),
+          m_placeholder(std::move(other.m_placeholder)),
+          m_width(other.m_width),
+          m_height(other.m_height),
+          m_inputText(std::move(other.m_inputText)),
+          m_lastDisplayedText(std::move(other.m_lastDisplayedText)),
+          m_active(other.m_active),
+          x(other.x), y(other.y), w(other.w), h(other.h),
+          r(other.r), g(other.g), b(other.b),
+          m_textTexture(other.m_textTexture) {
+        other.m_textTexture = nullptr;
+    }
+
+    Input& operator=(Input&& other) noexcept {
+        if (this != &other) {
+            FreeTexture();
+            m_renderer = other.m_renderer;
+            m_font = other.m_font;
+            m_placeholder = std::move(other.m_placeholder);
+            m_inputText = std::move(other.m_inputText);
+            m_lastDisplayedText = std::move(other.m_lastDisplayedText);
+            m_active = other.m_active;
+            x = other.x; y = other.y; w = other.w; h = other.h;
+            r = other.r; g = other.g; b = other.b;
+            m_textTexture = other.m_textTexture;
+            other.m_textTexture = nullptr;
+        }
+        return *this;
+    }
+
+    ~Input() {
+        FreeTexture();
+    }
+
+    void RenderInput() {
+        std::string displayText;
+        if (m_active || !m_inputText.empty()) {
+            displayText = m_inputText;
+        } else {
+            displayText = m_placeholder;
+        }
+
+        if (displayText != m_lastDisplayedText) {
+            UpdateTexture(displayText);
+            m_lastDisplayedText = displayText;
+        }
+
+        SDL_SetRenderDrawColor(m_renderer, r, g, b, 255);
+        SDL_FRect inputRect = {x, y, w, h};
+        SDL_RenderFillRect(m_renderer, &inputRect);
+
+        if (m_textTexture) {
+            float tw, th;
+            SDL_GetTextureSize(m_textTexture, &tw, &th);
+            float tx = x + 5;
+            float ty = y + (h - th) / 2.0f;
+            SDL_FRect textRect = {tx, ty, tw, th};
+            SDL_RenderTexture(m_renderer, m_textTexture, nullptr, &textRect);
+        }
+    }
+
+    void HandleEvent(const SDL_Event& event) {
+        if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
+            int mouseX = static_cast<int>(event.button.x);
+            int mouseY = static_cast<int>(event.button.y);
+            bool inside = (mouseX >= x && mouseX <= x + w && mouseY >= y && mouseY <= y + h);
+            SetActive(inside);
+        }
+        else if (event.type == SDL_EVENT_KEY_DOWN && m_active) {
+            SDL_Keycode key = event.key.key;
+            if (key == SDLK_BACKSPACE) {
+                if (!m_inputText.empty()) {
+                    m_inputText.pop_back();
+                }
+            }
+            else if (key == SDLK_RETURN || key == SDLK_KP_ENTER) {
+                SetActive(false);
+            }
+        }
+        else if (event.type == SDL_EVENT_TEXT_INPUT && m_active) {
+            m_inputText += event.text.text;
+        }
+    }
+
+    const std::string& GetText() const { return m_inputText; }
+
+    void Clear() {
+        m_inputText.clear();
+    }
+
+private:
+    float x, y, w, h;
+    std::string m_placeholder;
+    std::string m_inputText;
+    std::string m_lastDisplayedText;
+    bool m_active;
+    SDL_Texture* m_textTexture;
+    SDL_Renderer* m_renderer;
+    TTF_Font* m_font;
+    const float m_width, m_height;
+    int r, g, b;
+
+    void UpdateTexture(const std::string& text) {
+        FreeTexture();
+        if (text.empty()) return;
+
+        SDL_Color color = {255,255,255,255};
+        SDL_Surface* surface = TTF_RenderText_Blended(m_font, text.c_str(), 0, color);
+        if (surface) {
+            m_textTexture = SDL_CreateTextureFromSurface(m_renderer, surface);
+            SDL_DestroySurface(surface);
+        }
+    }
+
+    void FreeTexture() {
+        if (m_textTexture) {
+            SDL_DestroyTexture(m_textTexture);
+            m_textTexture = nullptr;
+        }
+    }
+
+    void SetActive(bool active) {
+        if (m_active != active) {
+            m_active = active;
+            if (!m_active) {
+                m_lastDisplayedText.clear();
+            }
+        }
+    }
+};

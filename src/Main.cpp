@@ -94,15 +94,15 @@ class NewGameMenu {
             m_buttonsObjects.emplace_back(
                 m_renderer, m_font, m_buttons[i],
                 m_width, m_height,
-                m_width / 3,
-                m_height / 8 + (m_height / 10 + ((m_height / 8) * i)),
-                m_width / 3, m_height / 10,
+                m_width / 8+((m_width/8*5)*i),
+                m_height/8+((m_height/8)*6),
+                m_width / 8, m_height / 8,
                 240, 240, 240
             );
         }
     }
     void Render() {
-        SDL_SetRenderDrawColor(m_renderer, 0, 100, 100, 255);
+        SDL_SetRenderDrawColor(m_renderer, 20, 150, 20, 255);
         SDL_RenderClear(m_renderer);
         for (auto& button : m_buttonsObjects) {
             button.RenderButton();
@@ -116,12 +116,8 @@ class NewGameMenu {
                 State = 0;
             }
             else if (m_buttonsObjects[1].GetButtonAt(mouseX, mouseY)) {
+                //TODO gamestate start
 
-            }
-            else if (m_buttonsObjects[2].GetButtonAt(mouseX, mouseY)) {
-                SDL_Event quitEvent;
-                quitEvent.type = SDL_EVENT_QUIT;
-                SDL_PushEvent(&quitEvent);
             }
         }
     }
@@ -133,7 +129,7 @@ class NewGameMenu {
     std::vector<Button> m_buttonsObjects;
     void InitButtons() {
         m_buttons = {
-            "Play", "Options", "Exit"
+            "Back", "Play"
         };
     }
 
@@ -186,6 +182,7 @@ int main(int argc, char *argv[]){
         std::cerr<<"problem with window size: "<<SDL_GetError()<<std::endl;
     }
     SDL_Renderer* renderer = SDL_CreateRenderer(window, nullptr);
+    SDL_SetRenderVSync(renderer, 1);
     if(!renderer){
         std::cerr<<"renderer creation failed: "<<SDL_GetError()<<std::endl;
         SDL_DestroyWindow(window);
