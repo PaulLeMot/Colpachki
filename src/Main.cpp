@@ -9,6 +9,7 @@
 #include <SDL3/SDL_main.h>
 #include <vector>
 #include "../include/ColpEngine.hpp"
+int State{0};
 class MainMenu {
     public:
     MainMenu(SDL_Renderer* renderer, TTF_Font* font, const float width, const float height) : m_renderer(renderer), m_font(font), m_width(width), m_height(height){
@@ -36,10 +37,10 @@ class MainMenu {
             int mouseX = static_cast<int>(event.button.x);
             int mouseY = static_cast<int>(event.button.y);
             if (m_buttonsObjects[0].GetButtonAt(mouseX, mouseY)) {
-                OnButtonPressed("Play");
+                State = 1;
             }
             else if (m_buttonsObjects[1].GetButtonAt(mouseX, mouseY)) {
-                OnButtonPressed("Options");
+
             }
             else if (m_buttonsObjects[2].GetButtonAt(mouseX, mouseY)) {
                 SDL_Event quitEvent;
@@ -83,11 +84,83 @@ class MainMenu {
                 break;
         }
     }*/
-    void OnButtonPressed(std::string button){
-
-    }
 };
+
+class NewGameMenu {
+    public:
+    NewGameMenu(SDL_Renderer* renderer, TTF_Font* font, const float width, const float height) : m_renderer(renderer), m_font(font), m_width(width), m_height(height){
+        InitButtons();
+        for (size_t i = 0; i < m_buttons.size(); ++i) {
+            m_buttonsObjects.emplace_back(
+                m_renderer, m_font, m_buttons[i],
+                m_width, m_height,
+                m_width / 3,
+                m_height / 8 + (m_height / 10 + ((m_height / 8) * i)),
+                m_width / 3, m_height / 10,
+                240, 240, 240
+            );
+        }
+    }
+    void Render() {
+        SDL_SetRenderDrawColor(m_renderer, 0, 100, 100, 255);
+        SDL_RenderClear(m_renderer);
+        for (auto& button : m_buttonsObjects) {
+            button.RenderButton();
+        }
+    }
+    void HandleEvent(const SDL_Event& event) {
+        if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
+            int mouseX = static_cast<int>(event.button.x);
+            int mouseY = static_cast<int>(event.button.y);
+            if (m_buttonsObjects[0].GetButtonAt(mouseX, mouseY)) {
+                State = 0;
+            }
+            else if (m_buttonsObjects[1].GetButtonAt(mouseX, mouseY)) {
+
+            }
+            else if (m_buttonsObjects[2].GetButtonAt(mouseX, mouseY)) {
+                SDL_Event quitEvent;
+                quitEvent.type = SDL_EVENT_QUIT;
+                SDL_PushEvent(&quitEvent);
+            }
+        }
+    }
+    private:
+    std::vector<std::string> m_buttons;
+    SDL_Renderer* m_renderer;
+    TTF_Font* m_font;
+    const float m_width, m_height;
+    std::vector<Button> m_buttonsObjects;
+    void InitButtons() {
+        m_buttons = {
+            "Play", "Options", "Exit"
+        };
+    }
+
+    /*void HandleKeyPress(const SDL_KeyboardEvent& keyEvent) {
+        SDL_Keycode key = keyEvent.key;
+        int Current = 0;
         
+        switch (key) {
+            case SDLK_UP:
+                if (Current !=0) {
+                    Current-=1;
+                }else{Current=2;}
+                break;
+                
+            case SDLK_DOWN:
+                if (Current !=2) {
+                    Current+=1;
+                }else{Current=0;}
+                break;
+
+            case SDLK_RETURN:
+            case SDLK_KP_ENTER:
+                OnButtonPressed(m_buttons[Current]);
+                break;
+        }
+    }*/
+};
 int main(int argc, char *argv[]){
     if(!SDL_Init(SDL_INIT_VIDEO)){
         std::cerr<<"SDL_Init Failed: "<<SDL_GetError()<<std::endl;
@@ -130,7 +203,9 @@ int main(int argc, char *argv[]){
         SDL_Quit();
         return -1;
     }
-    MainMenu ui(renderer, font, width, height);
+    MainMenu MMenu(renderer, font, width, height);
+    NewGameMenu GMenu(renderer, font, width,height);
+    
     bool d = 0;
     Uint32 lastTime = SDL_GetTicks();
     while(!d){
@@ -140,14 +215,22 @@ int main(int argc, char *argv[]){
         
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
-                if (event.type == SDL_EVENT_QUIT) {
-                    d = true;
-                }
-                ui.HandleEvent(event);
+            if (event.type == SDL_EVENT_QUIT) {
+                d = true;
+            }
+            if(State==0){
+                MMenu.HandleEvent(event);
+            }else if (State == 1){
+                GMenu.HandleEvent(event);
+            }
         }
-        ui.Render();
+        if(State==0){
+            MMenu.Render();
+        }else if(State==1){
+            GMenu.Render();
+        }
         SDL_RenderPresent(renderer);
-        SDL_Delay(32);
+        SDL_Delay(64);
     }
     if (font) TTF_CloseFont(font);
     SDL_DestroyRenderer(renderer);
