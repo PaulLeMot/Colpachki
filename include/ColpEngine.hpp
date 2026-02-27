@@ -93,12 +93,13 @@ class Button{
 
 class Input {
 public:
+    std::string m_inputText;
     Input(SDL_Renderer* renderer,
           TTF_Font* font,
           const std::string& placeholder,
           float width, float height,
           float x, float y, float w, float h,
-          int r, int g, int b)
+          int r, int g, int b, int textlimit)
         : m_renderer(renderer), m_font(font), m_placeholder(placeholder),
           m_width(width), m_height(height), x(x), y(y), w(w), h(h),
           r(r), g(g), b(b), m_active(false), m_textTexture(nullptr) {
@@ -200,7 +201,7 @@ public:
                 SetActive(false);
             }
         }
-        else if (event.type == SDL_EVENT_TEXT_INPUT && m_active &&m_inputText.size()<31) {  //maybe fix tho not that important
+        else if (event.type == SDL_EVENT_TEXT_INPUT && m_active &&m_inputText.size()<textlimit) {  //maybe fix tho not that important
             m_inputText += event.text.text;
         }
     }
@@ -214,7 +215,6 @@ public:
 private:
     float x, y, w, h;
     std::string m_placeholder;
-    std::string m_inputText;
     std::string m_lastDisplayedText;
     bool m_active;
     SDL_Texture* m_textTexture;
@@ -222,6 +222,7 @@ private:
     TTF_Font* m_font;
     const float m_width, m_height;
     int r, g, b;
+    int textlimit;
 
     void UpdateTexture(const std::string& text) {
         FreeTexture();

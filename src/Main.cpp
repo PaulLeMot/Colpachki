@@ -8,7 +8,10 @@
 #include <iostream>
 #include <SDL3/SDL_main.h>
 #include <vector>
+#include <optional>
 #include "../include/ColpEngine.hpp"
+#include "../include/GameClass.hpp"
+#include "../include/GameManager.hpp"
 int State{0};
 class MainMenu {
     public:
@@ -108,10 +111,13 @@ class NewGameMenu {
                 (m_height/8)+(((m_height/8)+m_height/10)*i),
                 (m_width/8)*6,
                 (m_height/8),
-                0,0,0
+                0,0,0, 31-(21*i)
             );
         }
     }
+
+    std::optional<Game> m_game;
+
     void Render() {
         SDL_SetRenderDrawColor(m_renderer, 0, 0, 100, 255);
         SDL_RenderClear(m_renderer);
@@ -130,8 +136,10 @@ class NewGameMenu {
                 State = 0;
             }
             else if (m_buttonsObjects[1].GetButtonAt(mouseX, mouseY)) {
-                //TODO gamestate start
-
+                State = 2;
+                GameManager NewSave(m_inputsObjects[0].m_inputText,m_inputsObjects[1].m_inputText);
+                NewSave.NewGame();
+                m_game.emplace(m_renderer, m_font, m_width, m_height, NewSave.Name, NewSave.Seed);
             }
         }
         for(auto& input : m_inputsObjects){
@@ -225,7 +233,6 @@ int main(int argc, char *argv[]){
     }
     MainMenu MMenu(renderer, font, width, height);
     NewGameMenu GMenu(renderer, font, width,height);
-    
     bool d = 0;
     Uint32 lastTime = SDL_GetTicks();
     while(!d){
@@ -238,16 +245,20 @@ int main(int argc, char *argv[]){
             if (event.type == SDL_EVENT_QUIT) {
                 d = true;
             }
-            if(State==0){
-                MMenu.HandleEvent(event);
-            }else if (State == 1){
-                GMenu.HandleEvent(event);
+            switch(State){
+                case 0: MMenu.HandleEvent(event);
+                        break;
+                case 1: GMenu.HandleEvent(event);
+                        break;
+                case 2: GMenu.m_game->HandleEvent(event);
             }
         }
-        if(State==0){
-            MMenu.Render();
-        }else if(State==1){
-            GMenu.Render();
+        switch(State){
+            case 0: MMenu.Render();
+                    break;
+            case 1: GMenu.Render();
+                    break;
+            case 2: GMenu.m_game->Render();
         }
         SDL_RenderPresent(renderer);
         SDL_Delay(64);
