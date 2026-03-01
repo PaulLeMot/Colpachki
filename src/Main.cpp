@@ -261,7 +261,7 @@ int main(int argc, char *argv[]){
             case 2: GMenu.m_game->Render();
         }
         SDL_RenderPresent(renderer);
-        SDL_Delay(64);
+        SDL_Delay(20);
     }
     if (font) TTF_CloseFont(font);
     SDL_DestroyRenderer(renderer);
