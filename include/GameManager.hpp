@@ -17,7 +17,7 @@ class GameManager{
         GameManager(const std::string& Name,
                     const std::string& SeedName)
                     : Name(Name), SeedName(SeedName){
-            uint64_t Seed = str2hash(SeedName);
+            Seed = str2hash(SeedName);
         }
 
         std::string Name, SeedName;
