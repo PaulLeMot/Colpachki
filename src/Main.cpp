@@ -91,7 +91,10 @@ class MainMenu {
 
 class NewGameMenu {
     public:
-    NewGameMenu(SDL_Renderer* renderer, TTF_Font* font, const float width, const float height) : m_renderer(renderer), m_font(font), m_width(width), m_height(height){
+    NewGameMenu(SDL_Renderer* renderer, TTF_Font* font,
+        const float width, const float height, int* StatePtr) : 
+        m_renderer(renderer), m_font(font), 
+        m_width(width), m_height(height), m_state(StatePtr){
         InitObjects();
         for (size_t i = 0; i < m_buttons.size(); ++i) {
             m_buttonsObjects.emplace_back(
@@ -139,7 +142,7 @@ class NewGameMenu {
                 State = 2;
                 GameManager NewSave(m_inputsObjects[0].m_inputText,m_inputsObjects[1].m_inputText);
                 NewSave.NewGame();
-                m_game.emplace(m_renderer, m_font, m_width, m_height, NewSave.Name, NewSave.Seed);
+                m_game.emplace(m_renderer, m_font, m_width, m_height, NewSave.Name, NewSave.Seed, m_state);
             }
         }
         for(auto& input : m_inputsObjects){
@@ -154,6 +157,7 @@ class NewGameMenu {
     const float m_width, m_height;
     std::vector<Button> m_buttonsObjects;
     std::vector<Input> m_inputsObjects;
+    int* m_state;
     void InitObjects() {
         m_buttons = {
             "Back", "Play"
@@ -232,7 +236,7 @@ int main(int argc, char *argv[]){
         return -1;
     }
     MainMenu MMenu(renderer, font, width, height);
-    NewGameMenu GMenu(renderer, font, width,height);
+    NewGameMenu GMenu(renderer, font, width,height, &State);
     bool d = 0;
     Uint32 lastTime = SDL_GetTicks();
     while(!d){

@@ -17,18 +17,34 @@
 
 class Game{
     public:
-        Game(SDL_Renderer* renderer, TTF_Font* font, const float width, const float height, const std::string Name, const int64_t Seed) : m_renderer(renderer), m_font(font), m_width(width), m_height(height), Name(Name), Seed(Seed) {
-            srand(time(0));
-            CreateMap();
-            InitButtons();
-            m_buttonsObjects.emplace_back(
-                m_renderer,m_font,m_buttons[0],
-                m_width, m_height,
-                m_width-(m_width/10),
-                0,
-                m_width/10,m_width/10,240,240,240);
+        Game(SDL_Renderer* renderer, TTF_Font* font, 
+            const float width, const float height, 
+            const std::string Name, const int64_t Seed,
+            int* StatePtr) : 
+            m_renderer(renderer), m_font(font),
+            m_width(width), m_height(height), 
+            Name(Name), Seed(Seed), m_state(StatePtr){
+                Otstup = (m_width - m_height) / 2;
+                srand(time(0));
+                CreateMap();
+                SmoothClimate(3);
+                InitButtons();
+                m_buttonsObjects.emplace_back(
+                    m_renderer,m_font,m_buttons[0],
+                    m_width, m_height,
+                    m_width-(m_width/10),
+                    0,
+                    m_width/10,m_width/10,240,240,240);
         }
     void Render() {
+        static const SDL_Color ZONE_COLORS[6] = {
+            {222, 254, 247, 255},
+            {4, 166, 128, 255},
+            {4, 166, 47, 255},
+            {186, 251, 68, 255},
+            {251, 209, 68, 255},
+            {0, 128, 0, 255}
+        };
         SDL_SetRenderDrawColor(m_renderer, 0, 0, 0, 255);
         SDL_RenderClear(m_renderer);
     
@@ -55,15 +71,13 @@ class Game{
                     screenY + tileSize < 0 || screenY > m_height) {
                     continue;
                 }
-    
-                SDL_Color color;
-                switch (Map[mapY * N + mapX].biome) {
-                    case 1: color = {0, 0, 100, 255}; break;
-                    case 0: color = {0, 100, 0, 255}; break;
-                    default: color = {0, 0, 100, 255}; break;
+                const Tile& tile = Map[mapY * N + mapX];
+                if (tile.biome == 0) {
+                    SDL_Color col = ZONE_COLORS[tile.zone];
+                    SDL_SetRenderDrawColor(m_renderer, col.r, col.g, col.b, 255);
+                } else {
+                    SDL_SetRenderDrawColor(m_renderer, 0, 0, 100, 255); // вода
                 }
-    
-                SDL_SetRenderDrawColor(m_renderer, color.r, color.g, color.b, 255);
                 SDL_FRect tileRect = {screenX, screenY, tileSize, tileSize};
                 SDL_RenderFillRect(m_renderer, &tileRect);
             }
@@ -80,7 +94,7 @@ class Game{
         
         std::vector<int> p(512);
         for (int i = 0; i < 512; ++i) p[i] = permutation[i % 256];
-    
+
         auto fade = [](float t) { return t * t * t * (t * (t * 6 - 15) + 10); };
         auto lerp = [](float a, float b, float t) { return a + t * (b - a); };
         auto grad = [](int hash, float x, float y) {
@@ -89,7 +103,7 @@ class Game{
             float v = h < 4 ? y : (h == 12 || h == 14 ? x : 0);
             return ((h & 1) == 0 ? u : -u) + ((h & 2) == 0 ? v : -v);
         };
-    
+
         auto noise = [&](float x, float y) {
             int X = (int)std::floor(x) & 255;
             int Y = (int)std::floor(y) & 255;
@@ -109,57 +123,145 @@ class Game{
             float x2 = lerp(g3, g4, u);
             return lerp(x1, x2, v);
         };
-    
+
         const int octaves = 4;
         const float persistence = 0.5f;
         const float lacunarity = 2.7f;
         const float scale = 0.02f;
-    
+        const float T = N * scale;
+
         std::vector<float> rawValues(N * N);
-    
+
         for (int i = 0; i < N; ++i) {
             for (int j = 0; j < N; ++j) {
                 float x = i * scale;
                 float y = j * scale;
-                float amplitude = 1.0f;
-                float frequency = 1.0f;
-                float noiseValue = 0.0f;
-                float maxAmplitude = 0.0f;
-    
-                for (int o = 0; o < octaves; ++o) {
-                    noiseValue += amplitude * noise(x * frequency, y * frequency);
-                    maxAmplitude += amplitude;
-                    amplitude *= persistence;
-                    frequency *= lacunarity;
-                }
-    
-                float raw = noiseValue / maxAmplitude;
+
+                float wx = x / T;
+                float wy = y / T;
+
+                auto fractal_noise = [&](float px, float py) {
+                    float amp = 1.0f;
+                    float freq = 1.0f;
+                    float value = 0.0f;
+                    float maxAmp = 0.0f;
+                    for (int o = 0; o < octaves; ++o) {
+                        value += amp * noise(px * freq, py * freq);
+                        maxAmp += amp;
+                        amp *= persistence;
+                        freq *= lacunarity;
+                    }
+                    return value / maxAmp;
+                };
+
+                float v00 = fractal_noise(x, y);
+                float v10 = fractal_noise(x - T, y);
+                float v01 = fractal_noise(x, y - T);
+                float v11 = fractal_noise(x - T, y - T);
+
+                float raw = (1.0f - wx) * (1.0f - wy) * v00
+                        + wx * (1.0f - wy) * v10
+                        + (1.0f - wx) * wy * v01
+                        + wx * wy * v11;
+
                 rawValues[i * N + j] = raw;
             }
         }
-    
+
         std::vector<float> sorted = rawValues;
         std::sort(sorted.begin(), sorted.end());
         size_t thresholdIndex = static_cast<size_t>(sorted.size() * 0.33);
         float threshold = sorted[thresholdIndex];
-    
+
         Map.resize(N * N);
         for (int i = 0; i < N; ++i) {
             for (int j = 0; j < N; ++j) {
                 float raw = rawValues[i * N + j];
                 int biome = (raw > threshold) ? 1 : 0;
-                Map[i * N + j] = {i, j, biome};
+                int zone = -1;
+
+                if (biome == 0) {
+                    float pos = (float)i / N;
+                    float p = pos <= 0.5f ? pos : 1.0f - pos;
+
+                    const float borders[] = {0.1f, 0.2f, 0.3f, 0.4f, 0.47f};
+                    const float blend_width = 0.02f;
+
+                    int main_zone;
+                    if (p <= borders[0]) main_zone = 0;
+                    else if (p <= borders[1]) main_zone = 1;
+                    else if (p <= borders[2]) main_zone = 2;
+                    else if (p <= borders[3]) main_zone = 3;
+                    else if (p <= borders[4]) main_zone = 4;
+                    else main_zone = 5;
+
+                    int selected_zone = main_zone;
+
+                    for (int b = 0; b < 5; ++b) {
+                        if (p >= borders[b] - blend_width && p <= borders[b] + blend_width) {
+                            float t = (p - (borders[b] - blend_width)) / (2.0f * blend_width);
+                            float rnd = (float)rand() / RAND_MAX;
+                            selected_zone = (rnd < t) ? b + 1 : b;
+                            break;
+                        }
+                    }
+                    zone = selected_zone;
+                }
+
+                Map[i * N + j] = {i, j, biome, zone};
             }
         }
     }
+
+    void SmoothClimate(int iterations = 5) {
+        std::vector<Tile> newMap = Map;
+
+        for (int iter = 0; iter < iterations; ++iter) {
+            for (int i = 0; i < N; ++i) {
+                for (int j = 0; j < N; ++j) {
+                    const Tile& tile = Map[i * N + j];
+                    if (tile.biome == 1) continue;
+
+                    int votes[6] = {0};
+
+                    for (int di = -1; di <= 1; ++di) {
+                        for (int dj = -1; dj <= 1; ++dj) {
+                            if (di == 0 && dj == 0) continue;
+                            int ni = (i + di + N) % N;
+                            int nj = (j + dj + N) % N;
+                            const Tile& neighbor = Map[ni * N + nj];
+                            if (neighbor.biome == 1) continue;
+                            if (neighbor.zone >= 0 && neighbor.zone < 6)
+                                votes[neighbor.zone]++;
+                        }
+                    }
+
+                    int bestZone = tile.zone;
+                    int bestCount = 0;
+                    for (int z = 0; z < 6; ++z) {
+                        if (votes[z] > bestCount) {
+                            bestCount = votes[z];
+                            bestZone = z;
+                        }
+                    }
+
+                    if (bestCount > 2) {
+                        newMap[i * N + j].zone = bestZone;
+                    } else {
+                        newMap[i * N + j].zone = tile.zone;
+                    }
+                }
+            }
+            std::swap(Map, newMap);
+        }
+    }
+
     void HandleEvent(const SDL_Event& event) {
         if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
             int mouseX = static_cast<int>(event.button.x);
             int mouseY = static_cast<int>(event.button.y);
             if (m_buttonsObjects[0].GetButtonAt(mouseX, mouseY)) {
-                SDL_Event quitEvent;
-                quitEvent.type = SDL_EVENT_QUIT;
-                SDL_PushEvent(&quitEvent);
+                if(m_state)*m_state=1;
                 return;
             }
         }
@@ -227,6 +329,7 @@ class Game{
     struct Tile{
         int x,y;
         int biome;
+        int zone;
     };
     void InitButtons(){
         m_buttons={"..."};
@@ -239,7 +342,7 @@ class Game{
         const uint64_t Seed;
         std::vector<Tile>Map{};
         const uint16_t N = 256;
-        const int Otstup=(m_width-m_height)/2;
+        int Otstup=(m_width-m_height)/2;
         std::vector<std::string>m_buttons;
         std::vector<Button>m_buttonsObjects;
         bool isDragging = false;
@@ -247,4 +350,5 @@ class Game{
         float zoom = 1.0f;
         float startPanX = 0.0f, startPanY = 0.0f;
         int startMouseX = 0, startMouseY = 0;
+        int* m_state;
 };
