@@ -102,7 +102,8 @@ public:
           int r, int g, int b, int textlimit)
         : m_renderer(renderer), m_font(font), m_placeholder(placeholder),
           m_width(width), m_height(height), x(x), y(y), w(w), h(h),
-          r(r), g(g), b(b), m_active(false), m_textTexture(nullptr) {
+          r(r), g(g), b(b), m_active(false), m_textTexture(nullptr),
+          textlimit(textlimit) {
         if (m_font) {
             UpdateTexture(m_placeholder);
         }
@@ -122,7 +123,8 @@ public:
           m_active(other.m_active),
           x(other.x), y(other.y), w(other.w), h(other.h),
           r(other.r), g(other.g), b(other.b),
-          m_textTexture(other.m_textTexture) {
+          m_textTexture(other.m_textTexture),
+          textlimit(other.textlimit) {
         other.m_textTexture = nullptr;
     }
 
@@ -138,6 +140,7 @@ public:
             x = other.x; y = other.y; w = other.w; h = other.h;
             r = other.r; g = other.g; b = other.b;
             m_textTexture = other.m_textTexture;
+            textlimit = other.textlimit;
             other.m_textTexture = nullptr;
         }
         return *this;
@@ -201,8 +204,10 @@ public:
                 SetActive(false);
             }
         }
-        else if (event.type == SDL_EVENT_TEXT_INPUT && m_active &&m_inputText.size()<textlimit) {  //maybe fix tho not that important
-            m_inputText += event.text.text;
+        else if (event.type == SDL_EVENT_TEXT_INPUT && m_active) {
+            if (m_inputText.size() < textlimit) {
+                m_inputText += event.text.text;
+            }
         }
     }
 
