@@ -28,6 +28,7 @@ class Game{
                 srand(time(0));
                 CreateMap();
                 SmoothClimate(3);
+                ApplyCoastalInfluence(1);
                 InitButtons();
                 m_buttonsObjects.emplace_back(
                     m_renderer,m_font,m_buttons[0],
@@ -41,7 +42,7 @@ class Game{
             {222, 254, 247, 255},
             {4, 166, 128, 255},
             {4, 166, 47, 255},
-            {186, 251, 68, 255},
+            {128, 188, 58, 255},
             {251, 209, 68, 255},
             {0, 128, 0, 255}
         };
@@ -256,6 +257,73 @@ class Game{
         }
     }
 
+void ApplyCoastalInfluence(int iterations = 3) {
+    std::vector<Tile> newMap = Map;
+    for (int iter = 0; iter < iterations; ++iter) {
+        for (int i = 0; i < N; ++i) {
+            for (int j = 0; j < N; ++j) {
+                const Tile& tile = Map[i * N + j];
+                if (tile.biome == 1) {
+                    newMap[i * N + j].zone = -1;
+                    continue;
+                }
+
+                float pos = (float)i / N;
+                float p = pos <= 0.5f ? pos : 1.0f - pos;
+                int base_zone;
+                if (p <= 0.1f) base_zone = 0;
+                else if (p <= 0.2f) base_zone = 1;
+                else if (p <= 0.3f) base_zone = 2;
+                else if (p <= 0.4f) base_zone = 3;
+                else if (p <= 0.47f) base_zone = 4;
+                else base_zone = 5;
+
+                int newZone = tile.zone;
+
+                bool waterNear = false;
+                bool tropicalNear = false;
+                bool temperateNear = false;
+                bool desertNear = false;
+                for (int di = -1; di <= 1; ++di) {
+                    for (int dj = -1; dj <= 1; ++dj) {
+                        if (di == 0 && dj == 0) continue;
+                        int ni = (i + di + N) % N;
+                        int nj = (j + dj + N) % N;
+                        const Tile& nb = Map[ni * N + nj];
+                        if (nb.biome == 1)
+                            waterNear = true;
+                        else if (nb.zone == 5)
+                            tropicalNear = true;
+                        else if (nb.zone == 3)
+                            temperateNear = true;
+                        else if (nb.zone == 4)
+                            desertNear = true;
+                    }
+                }
+
+                if (tile.zone == 4) {
+                    if (base_zone >= 4 && (waterNear || tropicalNear)) {
+                        if (rand() % 100 < 80) {
+                            newZone = 5;
+                        }
+                    }
+                    if (newZone != 5) {
+                        if (base_zone <= 3 && waterNear && !tropicalNear) {
+                            newZone = 3;
+                        }
+                        else if (temperateNear && !tropicalNear && !waterNear) {
+                            newZone = 3;
+                        }
+                    }
+                    
+                }
+
+                newMap[i * N + j].zone = newZone;
+            }
+        }
+        std::swap(Map, newMap);
+    }
+}
     void HandleEvent(const SDL_Event& event) {
         if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
             int mouseX = static_cast<int>(event.button.x);
