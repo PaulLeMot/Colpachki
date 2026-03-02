@@ -203,7 +203,8 @@ class Game{
                         zone = selected_zone;
                     }
 
-                    Map[i * N + j] = {i, j, biome, zone};
+                    Map[i * N + j] = {static_cast<uint16_t>(i), static_cast<uint16_t>(j), 
+                    static_cast<uint8_t>(biome), static_cast<int8_t>(zone)};
                 }
             }
         }
@@ -389,9 +390,9 @@ void ApplyCoastalInfluence(int iterations = 3) {
     }
 
     struct Tile{
-        int x,y;
-        int biome;
-        int zone;
+        uint16_t x,y;
+        uint8_t biome;
+        int8_t zone;
     };
     void InitButtons(){
         m_buttons={"..."};
@@ -413,7 +414,7 @@ void ApplyCoastalInfluence(int iterations = 3) {
         std::string Name;
         const uint64_t Seed;
         std::vector<Tile>Map{};
-        const uint16_t N = 512;
+        const uint16_t N = 256;
         int Otstup=(m_width-m_height)/2;
         std::vector<std::string>m_buttons;
         std::vector<Button>m_buttonsObjects;
@@ -423,36 +424,49 @@ void ApplyCoastalInfluence(int iterations = 3) {
         float startPanX = 0.0f, startPanY = 0.0f;
         int startMouseX = 0, startMouseY = 0;
         int* m_state;
-        static constexpr float TEX_SIZE = 2048.0f;
+        static constexpr float TEX_SIZE = 1024.0f;
 
         void CreateMapTexture() {
-            m_mapTexture = SDL_CreateTexture(m_renderer, SDL_PIXELFORMAT_RGBA8888,
-                                            SDL_TEXTUREACCESS_TARGET, TEX_SIZE, TEX_SIZE);
-            if (!m_mapTexture) return;
-            
-            SDL_SetTextureScaleMode(m_mapTexture, SDL_SCALEMODE_PIXELART);
+            SDL_Surface* surface = SDL_CreateSurface(TEX_SIZE, TEX_SIZE, SDL_PIXELFORMAT_RGBA8888);
+            if (!surface) return;
 
-            SDL_Texture* oldTarget = SDL_GetRenderTarget(m_renderer);
-            SDL_SetRenderTarget(m_renderer, m_mapTexture);
-
-            SDL_SetRenderDrawColor(m_renderer, 0, 0, 0, 0);
-            SDL_RenderClear(m_renderer);
+            const SDL_PixelFormatDetails* formatDetails = SDL_GetPixelFormatDetails(surface->format);
+            if (!formatDetails) {
+                SDL_DestroySurface(surface);
+                return;
+            }
 
             float baseTileSize = TEX_SIZE / N;
+            Uint32* pixels = (Uint32*)surface->pixels;
+            int pitch = surface->pitch / 4;
+
             for (int i = 0; i < N; ++i) {
                 for (int j = 0; j < N; ++j) {
                     const Tile& tile = Map[i * N + j];
-                    SDL_FRect rect = { j * baseTileSize, i * baseTileSize, baseTileSize, baseTileSize };
+                    SDL_Color col;
                     if (tile.biome == 0) {
-                        SDL_Color col = ZONE_COLORS[tile.zone];
-                        SDL_SetRenderDrawColor(m_renderer, col.r, col.g, col.b, 255);
+                        col = ZONE_COLORS[tile.zone];
                     } else {
-                        SDL_SetRenderDrawColor(m_renderer, 0, 0, 100, 255);
+                        col = {0, 0, 100, 255};
                     }
-                    SDL_RenderFillRect(m_renderer, &rect);
+                    Uint32 color = SDL_MapRGBA(formatDetails, nullptr, col.r, col.g, col.b, 255);
+
+                    int x0 = static_cast<int>(j * baseTileSize);
+                    int y0 = static_cast<int>(i * baseTileSize);
+                    int x1 = static_cast<int>((j + 1) * baseTileSize);
+                    int y1 = static_cast<int>((i + 1) * baseTileSize);
+                    for (int y = y0; y < y1; ++y) {
+                        for (int x = x0; x < x1; ++x) {
+                            pixels[y * pitch + x] = color;
+                        }
+                    }
                 }
             }
+            m_mapTexture = SDL_CreateTextureFromSurface(m_renderer, surface);
+            SDL_DestroySurface(surface);
 
-            SDL_SetRenderTarget(m_renderer, oldTarget);
+            if (m_mapTexture) {
+                SDL_SetTextureScaleMode(m_mapTexture, SDL_SCALEMODE_PIXELART);
+            }
         }
 };
