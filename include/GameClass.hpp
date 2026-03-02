@@ -23,11 +23,12 @@ class Game{
             int* StatePtr) : 
             m_renderer(renderer), m_font(font),
             m_width(width), m_height(height), 
-            Name(Name), Seed(Seed), m_state(StatePtr){
+            Name(Name), Seed(Seed), m_state(StatePtr),
+            m_mapTexture(nullptr){
                 Otstup = (m_width - m_height) / 2;
                 srand(time(0));
                 CreateMap();
-                SmoothClimate(3);
+                SmoothClimate(2+(N/256));
                 ApplyCoastalInfluence(1);
                 InitButtons();
                 m_buttonsObjects.emplace_back(
@@ -36,183 +37,176 @@ class Game{
                     m_width-(m_width/10),
                     0,
                     m_width/10,m_width/10,240,240,240);
+                    CreateMapTexture(); 
         }
-    void Render() {
-        static const SDL_Color ZONE_COLORS[6] = {
-            {222, 254, 247, 255},
-            {4, 166, 128, 255},
-            {4, 166, 47, 255},
-            {128, 188, 58, 255},
-            {251, 209, 68, 255},
-            {0, 128, 0, 255}
-        };
-        SDL_SetRenderDrawColor(m_renderer, 0, 0, 0, 255);
-        SDL_RenderClear(m_renderer);
-    
-        float baseTileSize = m_height / N;
-        float tileSize = baseTileSize * zoom;
-    
-        float visibleWidth  = m_height / tileSize;
-        float visibleHeight = m_height / tileSize;
-    
-        int startX = static_cast<int>(std::floor(panX));
-        int startY = static_cast<int>(std::floor(panY));
-        int endX   = static_cast<int>(std::ceil(panX + visibleWidth));
-        int endY   = static_cast<int>(std::ceil(panY + visibleHeight));
-    
-        for (int worldY = startY; worldY <= endY; ++worldY) {
-            for (int worldX = startX; worldX <= endX; ++worldX) {
-                int mapX = ((worldX % N) + N) % N;
-                int mapY = ((worldY % N) + N) % N;
-    
-                float screenX = Otstup + (worldX - panX) * tileSize;
-                float screenY = (worldY - panY) * tileSize;
-    
-                if (screenX + tileSize < Otstup || screenX > Otstup + m_height ||
-                    screenY + tileSize < 0 || screenY > m_height) {
-                    continue;
+        ~Game() {
+            if (m_mapTexture) SDL_DestroyTexture(m_mapTexture);
+        }
+        void Render() {
+            SDL_SetRenderDrawColor(m_renderer, 0, 0, 0, 255);
+            SDL_RenderClear(m_renderer);
+
+            SDL_Rect clipRect = { (int)Otstup, 0, (int)m_height, (int)m_height };
+            SDL_SetRenderClipRect(m_renderer, &clipRect);
+
+            float scale = zoom * (m_height / TEX_SIZE);
+            float tileTexSize = TEX_SIZE / N;
+            float offsetX = fmod(panX * tileTexSize, TEX_SIZE);
+            if (offsetX < 0) offsetX += TEX_SIZE;
+            float offsetY = fmod(panY * tileTexSize, TEX_SIZE);
+            if (offsetY < 0) offsetY += TEX_SIZE;
+
+            float destW = TEX_SIZE * scale;
+            float destH = TEX_SIZE * scale;
+
+            float startX = Otstup - offsetX * scale;
+            float startY = -offsetY * scale;
+
+            for (float y = startY; y < m_height; y += destH) {
+                for (float x = startX; x < Otstup + m_height; x += destW) {
+                    SDL_FRect dest = { x, y, destW, destH };
+                    SDL_RenderTexture(m_renderer, m_mapTexture, nullptr, &dest);
                 }
-                const Tile& tile = Map[mapY * N + mapX];
-                if (tile.biome == 0) {
-                    SDL_Color col = ZONE_COLORS[tile.zone];
-                    SDL_SetRenderDrawColor(m_renderer, col.r, col.g, col.b, 255);
-                } else {
-                    SDL_SetRenderDrawColor(m_renderer, 0, 0, 100, 255); // вода
-                }
-                SDL_FRect tileRect = {screenX, screenY, tileSize, tileSize};
-                SDL_RenderFillRect(m_renderer, &tileRect);
             }
+
+            SDL_SetRenderClipRect(m_renderer, nullptr);
+
+            m_buttonsObjects[0].RenderButton();
         }
-    
-        m_buttonsObjects[0].RenderButton();
-    }
 
-    void CreateMap() {
-        std::mt19937 rng(Seed);
-        std::vector<int> permutation(256);
-        for (int i = 0; i < 256; ++i) permutation[i] = i;
-        std::shuffle(permutation.begin(), permutation.end(), rng);
-        
-        std::vector<int> p(512);
-        for (int i = 0; i < 512; ++i) p[i] = permutation[i % 256];
+        void CreateMap() {
+            std::mt19937 rng(Seed);
+            std::vector<int> permutation(256);
+            for (int i = 0; i < 256; ++i) permutation[i] = i;
+            std::shuffle(permutation.begin(), permutation.end(), rng);
 
-        auto fade = [](float t) { return t * t * t * (t * (t * 6 - 15) + 10); };
-        auto lerp = [](float a, float b, float t) { return a + t * (b - a); };
-        auto grad = [](int hash, float x, float y) {
-            int h = hash & 15;
-            float u = h < 8 ? x : y;
-            float v = h < 4 ? y : (h == 12 || h == 14 ? x : 0);
-            return ((h & 1) == 0 ? u : -u) + ((h & 2) == 0 ? v : -v);
-        };
+            std::vector<int> p(512);
+            for (int i = 0; i < 512; ++i) p[i] = permutation[i % 256];
 
-        auto noise = [&](float x, float y) {
-            int X = (int)std::floor(x) & 255;
-            int Y = (int)std::floor(y) & 255;
-            x -= std::floor(x);
-            y -= std::floor(y);
-            float u = fade(x);
-            float v = fade(y);
-            int aa = p[p[X] + Y];
-            int ab = p[p[X] + Y + 1];
-            int ba = p[p[X + 1] + Y];
-            int bb = p[p[X + 1] + Y + 1];
-            float g1 = grad(aa, x, y);
-            float g2 = grad(ba, x - 1, y);
-            float g3 = grad(ab, x, y - 1);
-            float g4 = grad(bb, x - 1, y - 1);
-            float x1 = lerp(g1, g2, u);
-            float x2 = lerp(g3, g4, u);
-            return lerp(x1, x2, v);
-        };
+            auto fade = [](float t) { return t * t * t * (t * (t * 6 - 15) + 10); };
+            auto lerp = [](float a, float b, float t) { return a + t * (b - a); };
+            auto grad = [](int hash, float x, float y) {
+                int h = hash & 15;
+                float u = h < 8 ? x : y;
+                float v = h < 4 ? y : (h == 12 || h == 14 ? x : 0);
+                return ((h & 1) == 0 ? u : -u) + ((h & 2) == 0 ? v : -v);
+            };
 
-        const int octaves = 4;
-        const float persistence = 0.5f;
-        const float lacunarity = 2.7f;
-        const float scale = 0.02f;
-        const float T = N * scale;
+            auto noise = [&](float x, float y) {
+                int X = (int)std::floor(x) & 255;
+                int Y = (int)std::floor(y) & 255;
+                x -= std::floor(x);
+                y -= std::floor(y);
+                float u = fade(x);
+                float v = fade(y);
+                int aa = p[p[X] + Y];
+                int ab = p[p[X] + Y + 1];
+                int ba = p[p[X + 1] + Y];
+                int bb = p[p[X + 1] + Y + 1];
+                float g1 = grad(aa, x, y);
+                float g2 = grad(ba, x - 1, y);
+                float g3 = grad(ab, x, y - 1);
+                float g4 = grad(bb, x - 1, y - 1);
+                float x1 = lerp(g1, g2, u);
+                float x2 = lerp(g3, g4, u);
+                return lerp(x1, x2, v);
+            };
 
-        std::vector<float> rawValues(N * N);
+            const int octaves = 4;
+            const float persistence = 0.5f;
+            const float lacunarity = 2.7f;
+            const float scale = 0.02f / (N / 256.0f);
+            const float T = N * scale;
 
-        for (int i = 0; i < N; ++i) {
-            for (int j = 0; j < N; ++j) {
-                float x = i * scale;
-                float y = j * scale;
+            const int gridSize = 2 * N;
+            std::vector<float> grid(gridSize * gridSize);
 
-                float wx = x / T;
-                float wy = y / T;
+            #pragma omp parallel for
+            for (int gi = 0; gi < gridSize; ++gi) {
+                for (int gj = 0; gj < gridSize; ++gj) {
+                    int ix = gi - N;
+                    int iy = gj - N;
+                    float x = ix * scale;
+                    float y = iy * scale;
 
-                auto fractal_noise = [&](float px, float py) {
                     float amp = 1.0f;
                     float freq = 1.0f;
                     float value = 0.0f;
                     float maxAmp = 0.0f;
                     for (int o = 0; o < octaves; ++o) {
-                        value += amp * noise(px * freq, py * freq);
+                        value += amp * noise(x * freq, y * freq);
                         maxAmp += amp;
                         amp *= persistence;
                         freq *= lacunarity;
                     }
-                    return value / maxAmp;
-                };
-
-                float v00 = fractal_noise(x, y);
-                float v10 = fractal_noise(x - T, y);
-                float v01 = fractal_noise(x, y - T);
-                float v11 = fractal_noise(x - T, y - T);
-
-                float raw = (1.0f - wx) * (1.0f - wy) * v00
-                        + wx * (1.0f - wy) * v10
-                        + (1.0f - wx) * wy * v01
-                        + wx * wy * v11;
-
-                rawValues[i * N + j] = raw;
-            }
-        }
-
-        std::vector<float> sorted = rawValues;
-        std::sort(sorted.begin(), sorted.end());
-        size_t thresholdIndex = static_cast<size_t>(sorted.size() * 0.33);
-        float threshold = sorted[thresholdIndex];
-
-        Map.resize(N * N);
-        for (int i = 0; i < N; ++i) {
-            for (int j = 0; j < N; ++j) {
-                float raw = rawValues[i * N + j];
-                int biome = (raw > threshold) ? 1 : 0;
-                int zone = -1;
-
-                if (biome == 0) {
-                    float pos = (float)i / N;
-                    float p = pos <= 0.5f ? pos : 1.0f - pos;
-
-                    const float borders[] = {0.1f, 0.2f, 0.3f, 0.4f, 0.47f};
-                    const float blend_width = 0.02f;
-
-                    int main_zone;
-                    if (p <= borders[0]) main_zone = 0;
-                    else if (p <= borders[1]) main_zone = 1;
-                    else if (p <= borders[2]) main_zone = 2;
-                    else if (p <= borders[3]) main_zone = 3;
-                    else if (p <= borders[4]) main_zone = 4;
-                    else main_zone = 5;
-
-                    int selected_zone = main_zone;
-
-                    for (int b = 0; b < 5; ++b) {
-                        if (p >= borders[b] - blend_width && p <= borders[b] + blend_width) {
-                            float t = (p - (borders[b] - blend_width)) / (2.0f * blend_width);
-                            float rnd = (float)rand() / RAND_MAX;
-                            selected_zone = (rnd < t) ? b + 1 : b;
-                            break;
-                        }
-                    }
-                    zone = selected_zone;
+                    grid[gi * gridSize + gj] = value / maxAmp;
                 }
+            }
 
-                Map[i * N + j] = {i, j, biome, zone};
+            std::vector<float> rawValues(N * N);
+            for (int i = 0; i < N; ++i) {
+                for (int j = 0; j < N; ++j) {
+                    float wx = (float)i / N;
+                    float wy = (float)j / N;
+
+                    float v00 = grid[(i + N) * gridSize + (j + N)];
+                    float v10 = grid[i * gridSize + (j + N)];
+                    float v01 = grid[(i + N) * gridSize + j];
+                    float v11 = grid[i * gridSize + j];
+
+                    float raw = (1.0f - wx) * (1.0f - wy) * v00
+                            + wx * (1.0f - wy) * v10
+                            + (1.0f - wx) * wy * v01
+                            + wx * wy * v11;
+
+                    rawValues[i * N + j] = raw;
+                }
+            }
+
+            std::vector<float> sorted = rawValues;
+            std::sort(sorted.begin(), sorted.end());
+            size_t thresholdIndex = static_cast<size_t>(sorted.size() * 0.33f);
+            float threshold = sorted[thresholdIndex];
+
+            Map.resize(N * N);
+            for (int i = 0; i < N; ++i) {
+                for (int j = 0; j < N; ++j) {
+                    float raw = rawValues[i * N + j];
+                    int biome = (raw > threshold) ? 1 : 0;
+                    int zone = -1;
+
+                    if (biome == 0) {
+                        float pos = (float)i / N;
+                        float p = pos <= 0.5f ? pos : 1.0f - pos;
+
+                        const float borders[] = {0.1f, 0.2f, 0.3f, 0.4f, 0.47f};
+                        const float blend_width = 0.02f;
+
+                        int main_zone;
+                        if (p <= borders[0]) main_zone = 0;
+                        else if (p <= borders[1]) main_zone = 1;
+                        else if (p <= borders[2]) main_zone = 2;
+                        else if (p <= borders[3]) main_zone = 3;
+                        else if (p <= borders[4]) main_zone = 4;
+                        else main_zone = 5;
+
+                        int selected_zone = main_zone;
+
+                        for (int b = 0; b < 5; ++b) {
+                            if (p >= borders[b] - blend_width && p <= borders[b] + blend_width) {
+                                float t = (p - (borders[b] - blend_width)) / (2.0f * blend_width);
+                                float rnd = (float)rand() / RAND_MAX;
+                                selected_zone = (rnd < t) ? b + 1 : b;
+                                break;
+                            }
+                        }
+                        zone = selected_zone;
+                    }
+
+                    Map[i * N + j] = {i, j, biome, zone};
+                }
             }
         }
-    }
 
     void SmoothClimate(int iterations = 5) {
         std::vector<Tile> newMap = Map;
@@ -372,7 +366,7 @@ void ApplyCoastalInfluence(int iterations = 3) {
             zoom *= (1.0f + wheel * zoomSpeed);
         
             const float minZoom = 1.0f;
-            const float maxZoom = 15.0f;
+            const float maxZoom = (N/256)*15.0f;
             if (zoom < minZoom) zoom = minZoom;
             if (zoom > maxZoom) zoom = maxZoom;
         
@@ -403,13 +397,23 @@ void ApplyCoastalInfluence(int iterations = 3) {
         m_buttons={"..."};
     }
     private:
+        SDL_Texture* m_mapTexture;
+        inline static const SDL_Color ZONE_COLORS[6] = {
+            {222, 254, 247, 255},
+            {4, 166, 128, 255},
+            {4, 166, 47, 255},
+            {128, 188, 58, 255},
+            {251, 209, 68, 255},
+            {0, 128, 0, 255}
+        };
+        
         SDL_Renderer* m_renderer;
         TTF_Font* m_font;
         const float m_width, m_height;
         std::string Name;
         const uint64_t Seed;
         std::vector<Tile>Map{};
-        const uint16_t N = 256;
+        const uint16_t N = 512;
         int Otstup=(m_width-m_height)/2;
         std::vector<std::string>m_buttons;
         std::vector<Button>m_buttonsObjects;
@@ -419,4 +423,36 @@ void ApplyCoastalInfluence(int iterations = 3) {
         float startPanX = 0.0f, startPanY = 0.0f;
         int startMouseX = 0, startMouseY = 0;
         int* m_state;
+        static constexpr float TEX_SIZE = 2048.0f;
+
+        void CreateMapTexture() {
+            m_mapTexture = SDL_CreateTexture(m_renderer, SDL_PIXELFORMAT_RGBA8888,
+                                            SDL_TEXTUREACCESS_TARGET, TEX_SIZE, TEX_SIZE);
+            if (!m_mapTexture) return;
+            
+            SDL_SetTextureScaleMode(m_mapTexture, SDL_SCALEMODE_PIXELART);
+
+            SDL_Texture* oldTarget = SDL_GetRenderTarget(m_renderer);
+            SDL_SetRenderTarget(m_renderer, m_mapTexture);
+
+            SDL_SetRenderDrawColor(m_renderer, 0, 0, 0, 0);
+            SDL_RenderClear(m_renderer);
+
+            float baseTileSize = TEX_SIZE / N;
+            for (int i = 0; i < N; ++i) {
+                for (int j = 0; j < N; ++j) {
+                    const Tile& tile = Map[i * N + j];
+                    SDL_FRect rect = { j * baseTileSize, i * baseTileSize, baseTileSize, baseTileSize };
+                    if (tile.biome == 0) {
+                        SDL_Color col = ZONE_COLORS[tile.zone];
+                        SDL_SetRenderDrawColor(m_renderer, col.r, col.g, col.b, 255);
+                    } else {
+                        SDL_SetRenderDrawColor(m_renderer, 0, 0, 100, 255);
+                    }
+                    SDL_RenderFillRect(m_renderer, &rect);
+                }
+            }
+
+            SDL_SetRenderTarget(m_renderer, oldTarget);
+        }
 };
