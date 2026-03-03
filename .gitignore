@@ -25,3 +25,4 @@ _deps/
 *~
 .DS_Store
 *.bin
+*.xcf

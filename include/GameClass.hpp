@@ -7,6 +7,7 @@
 #include <SDL3/SDL_timer.h>
 #include <SDL3/SDL_video.h>
 #include <SDL3_ttf/SDL_ttf.h>
+#include <SDL3_image/SDL_image.h>
 #include <SDL3/SDL_main.h>
 #include <string>
 #include<vector>
@@ -27,6 +28,19 @@ class Game{
             m_mapTexture(nullptr){
                 Otstup = (m_width - m_height) / 2;
                 srand(time(0));
+                m_atlasSurface = IMG_Load("../atlas.png");
+                if (!m_atlasSurface) {
+                    SDL_Log("Failed to load atlas.png: %s", SDL_GetError());
+                } else {
+                    if (m_atlasSurface->format != SDL_PIXELFORMAT_RGBA8888) {
+                        SDL_Surface* converted = SDL_ConvertSurface(m_atlasSurface, SDL_PIXELFORMAT_RGBA8888);
+                        SDL_DestroySurface(m_atlasSurface);
+                        m_atlasSurface = converted;
+                    }
+                    if (m_atlasSurface->w != 128 || m_atlasSurface->h != 128) {
+                        SDL_Log("Warning: atlas.png size is %dx%d, expected 256x256", m_atlasSurface->w, m_atlasSurface->h);
+                    }
+                }
                 CreateMap();
                 SmoothClimate(2+(N/256));
                 ApplyCoastalInfluence(1);
@@ -209,125 +223,126 @@ class Game{
             }
         }
 
-    void SmoothClimate(int iterations = 5) {
-        std::vector<Tile> newMap = Map;
+        void SmoothClimate(int iterations) {
+            std::vector<Tile> newMap = Map;
 
-        for (int iter = 0; iter < iterations; ++iter) {
-            for (int i = 0; i < N; ++i) {
-                for (int j = 0; j < N; ++j) {
-                    const Tile& tile = Map[i * N + j];
-                    if (tile.biome == 1) continue;
+            for (int iter = 0; iter < iterations; ++iter) {
+                for (int i = 0; i < N; ++i) {
+                    for (int j = 0; j < N; ++j) {
+                        const Tile& tile = Map[i * N + j];
+                        if (tile.biome == 1) continue;
 
-                    int votes[6] = {0};
+                        int votes[6] = {0};
 
-                    for (int di = -1; di <= 1; ++di) {
-                        for (int dj = -1; dj <= 1; ++dj) {
-                            if (di == 0 && dj == 0) continue;
-                            int ni = (i + di + N) % N;
-                            int nj = (j + dj + N) % N;
-                            const Tile& neighbor = Map[ni * N + nj];
-                            if (neighbor.biome == 1) continue;
-                            if (neighbor.zone >= 0 && neighbor.zone < 6)
-                                votes[neighbor.zone]++;
+                        for (int di = -1; di <= 1; ++di) {
+                            for (int dj = -1; dj <= 1; ++dj) {
+                                if (di == 0 && dj == 0) continue;
+                                int ni = (i + di + N) % N;
+                                int nj = (j + dj + N) % N;
+                                const Tile& neighbor = Map[ni * N + nj];
+                                if (neighbor.biome == 1) continue;
+                                if (neighbor.zone >= 0 && neighbor.zone < 6)
+                                    votes[neighbor.zone]++;
+                            }
                         }
-                    }
 
-                    int bestZone = tile.zone;
-                    int bestCount = 0;
-                    for (int z = 0; z < 6; ++z) {
-                        if (votes[z] > bestCount) {
-                            bestCount = votes[z];
-                            bestZone = z;
+                        int bestZone = tile.zone;
+                        int bestCount = 0;
+                        for (int z = 0; z < 6; ++z) {
+                            if (votes[z] > bestCount) {
+                                bestCount = votes[z];
+                                bestZone = z;
+                            }
                         }
-                    }
 
-                    if (bestCount > 2) {
-                        newMap[i * N + j].zone = bestZone;
-                    } else {
-                        newMap[i * N + j].zone = tile.zone;
+                        if (bestCount > 2) {
+                            newMap[i * N + j].zone = bestZone;
+                        } else {
+                            newMap[i * N + j].zone = tile.zone;
+                        }
                     }
                 }
-            }
-            std::swap(Map, newMap);
-        }
-    }
-
-void ApplyCoastalInfluence(int iterations = 3) {
-    std::vector<Tile> newMap = Map;
-    for (int iter = 0; iter < iterations; ++iter) {
-        for (int i = 0; i < N; ++i) {
-            for (int j = 0; j < N; ++j) {
-                const Tile& tile = Map[i * N + j];
-                if (tile.biome == 1) {
-                    newMap[i * N + j].zone = -1;
-                    continue;
-                }
-
-                float pos = (float)i / N;
-                float p = pos <= 0.5f ? pos : 1.0f - pos;
-                int base_zone;
-                if (p <= 0.1f) base_zone = 0;
-                else if (p <= 0.2f) base_zone = 1;
-                else if (p <= 0.3f) base_zone = 2;
-                else if (p <= 0.4f) base_zone = 3;
-                else if (p <= 0.47f) base_zone = 4;
-                else base_zone = 5;
-
-                int newZone = tile.zone;
-
-                bool waterNear = false;
-                bool tropicalNear = false;
-                bool temperateNear = false;
-                bool desertNear = false;
-                for (int di = -1; di <= 1; ++di) {
-                    for (int dj = -1; dj <= 1; ++dj) {
-                        if (di == 0 && dj == 0) continue;
-                        int ni = (i + di + N) % N;
-                        int nj = (j + dj + N) % N;
-                        const Tile& nb = Map[ni * N + nj];
-                        if (nb.biome == 1)
-                            waterNear = true;
-                        else if (nb.zone == 5)
-                            tropicalNear = true;
-                        else if (nb.zone == 3)
-                            temperateNear = true;
-                        else if (nb.zone == 4)
-                            desertNear = true;
-                    }
-                }
-
-                if (tile.zone == 4) {
-                    if (base_zone >= 4 && (waterNear || tropicalNear)) {
-                        if (rand() % 100 < 80) {
-                            newZone = 5;
-                        }
-                    }
-                    if (newZone != 5) {
-                        if (base_zone <= 3 && waterNear && !tropicalNear) {
-                            newZone = 3;
-                        }
-                        else if (temperateNear && !tropicalNear && !waterNear) {
-                            newZone = 3;
-                        }
-                    }
-                    
-                }
-
-                newMap[i * N + j].zone = newZone;
+                std::swap(Map, newMap);
             }
         }
-        std::swap(Map, newMap);
-    }
-}
-    void HandleEvent(const SDL_Event& event) {
-        if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
-            int mouseX = static_cast<int>(event.button.x);
-            int mouseY = static_cast<int>(event.button.y);
-            if (m_buttonsObjects[0].GetButtonAt(mouseX, mouseY)) {
-                if(m_state)*m_state=1;
-                return;
+
+        void ApplyCoastalInfluence(int iterations) {
+            std::vector<Tile> newMap = Map;
+            for (int iter = 0; iter < iterations; ++iter) {
+                for (int i = 0; i < N; ++i) {
+                    for (int j = 0; j < N; ++j) {
+                        const Tile& tile = Map[i * N + j];
+                        if (tile.biome == 1) {
+                            newMap[i * N + j].zone = -1;
+                            continue;
+                        }
+
+                        float pos = (float)i / N;
+                        float p = pos <= 0.5f ? pos : 1.0f - pos;
+                        int base_zone;
+                        if (p <= 0.1f) base_zone = 0;
+                        else if (p <= 0.2f) base_zone = 1;
+                        else if (p <= 0.3f) base_zone = 2;
+                        else if (p <= 0.4f) base_zone = 3;
+                        else if (p <= 0.47f) base_zone = 4;
+                        else base_zone = 5;
+
+                        int newZone = tile.zone;
+
+                        bool waterNear = false;
+                        bool tropicalNear = false;
+                        bool temperateNear = false;
+                        bool desertNear = false;
+                        for (int di = -1; di <= 1; ++di) {
+                            for (int dj = -1; dj <= 1; ++dj) {
+                                if (di == 0 && dj == 0) continue;
+                                int ni = (i + di + N) % N;
+                                int nj = (j + dj + N) % N;
+                                const Tile& nb = Map[ni * N + nj];
+                                if (nb.biome == 1)
+                                    waterNear = true;
+                                else if (nb.zone == 5)
+                                    tropicalNear = true;
+                                else if (nb.zone == 3)
+                                    temperateNear = true;
+                                else if (nb.zone == 4)
+                                    desertNear = true;
+                            }
+                        }
+
+                        if (tile.zone == 4) {
+                            if (base_zone >= 4 && (waterNear || tropicalNear)) {
+                                if (rand() % 100 < 80) {
+                                    newZone = 5;
+                                }
+                            }
+                            if (newZone != 5) {
+                                if (base_zone <= 3 && waterNear && !tropicalNear) {
+                                    newZone = 3;
+                                }
+                                else if (temperateNear && !tropicalNear && !waterNear) {
+                                    newZone = 3;
+                                }
+                            }
+                            
+                        }
+
+                        newMap[i * N + j].zone = newZone;
+                    }
+                }
+                std::swap(Map, newMap);
             }
         }
+        
+        void HandleEvent(const SDL_Event& event) {
+            if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
+                int mouseX = static_cast<int>(event.button.x);
+                int mouseY = static_cast<int>(event.button.y);
+                if (m_buttonsObjects[0].GetButtonAt(mouseX, mouseY)) {
+                    if(m_state)*m_state=1;
+                    return;
+                }
+            }
     
         if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.button == SDL_BUTTON_LEFT) {
             isDragging = true;
@@ -389,25 +404,19 @@ void ApplyCoastalInfluence(int iterations = 3) {
         }
     }
 
-    struct Tile{
-        uint16_t x,y;
-        uint8_t biome;
-        int8_t zone;
-    };
-    void InitButtons(){
-        m_buttons={"..."};
-    }
-    private:
-        SDL_Texture* m_mapTexture;
-        inline static const SDL_Color ZONE_COLORS[6] = {
-            {222, 254, 247, 255},
-            {4, 166, 128, 255},
-            {4, 166, 47, 255},
-            {128, 188, 58, 255},
-            {251, 209, 68, 255},
-            {0, 128, 0, 255}
+        struct Tile{
+            uint16_t x,y;
+            uint8_t biome;
+            int8_t zone;
         };
         
+        void InitButtons(){
+            m_buttons={"..."};
+        }
+    
+        private:
+        SDL_Texture* m_mapTexture;
+        SDL_Surface* m_atlasSurface;
         SDL_Renderer* m_renderer;
         TTF_Font* m_font;
         const float m_width, m_height;
@@ -424,44 +433,54 @@ void ApplyCoastalInfluence(int iterations = 3) {
         float startPanX = 0.0f, startPanY = 0.0f;
         int startMouseX = 0, startMouseY = 0;
         int* m_state;
-        static constexpr float TEX_SIZE = 1024.0f;
+        static constexpr float TEX_SIZE = 4096.0f;
 
         void CreateMapTexture() {
+            if (!m_atlasSurface) return;
+
             SDL_Surface* surface = SDL_CreateSurface(TEX_SIZE, TEX_SIZE, SDL_PIXELFORMAT_RGBA8888);
             if (!surface) return;
 
-            const SDL_PixelFormatDetails* formatDetails = SDL_GetPixelFormatDetails(surface->format);
-            if (!formatDetails) {
+            const SDL_PixelFormatDetails* dstFormat = SDL_GetPixelFormatDetails(surface->format);
+            if (!dstFormat) {
                 SDL_DestroySurface(surface);
                 return;
             }
 
             float baseTileSize = TEX_SIZE / N;
-            Uint32* pixels = (Uint32*)surface->pixels;
-            int pitch = surface->pitch / 4;
+            Uint32* dstPixels = (Uint32*)surface->pixels;
+            int dstPitch = surface->pitch / 4;
+
+            // Данные атласа
+            Uint32* srcPixels = (Uint32*)m_atlasSurface->pixels;
+            int srcPitch = m_atlasSurface->pitch / 4;
+            int atlasTileSize = m_atlasSurface->w / 8;
 
             for (int i = 0; i < N; ++i) {
                 for (int j = 0; j < N; ++j) {
                     const Tile& tile = Map[i * N + j];
-                    SDL_Color col;
+                    int tileType;
                     if (tile.biome == 0) {
-                        col = ZONE_COLORS[tile.zone];
+                        tileType = tile.zone;
                     } else {
-                        col = {0, 0, 100, 255};
+                        tileType = 6;
                     }
-                    Uint32 color = SDL_MapRGBA(formatDetails, nullptr, col.r, col.g, col.b, 255);
 
-                    int x0 = static_cast<int>(j * baseTileSize);
-                    int y0 = static_cast<int>(i * baseTileSize);
-                    int x1 = static_cast<int>((j + 1) * baseTileSize);
-                    int y1 = static_cast<int>((i + 1) * baseTileSize);
-                    for (int y = y0; y < y1; ++y) {
-                        for (int x = x0; x < x1; ++x) {
-                            pixels[y * pitch + x] = color;
+                    int srcX0 = 0;
+                    int srcY0 = tileType * atlasTileSize;
+
+                    int dstX0 = static_cast<int>(j * baseTileSize);
+                    int dstY0 = static_cast<int>(i * baseTileSize);
+
+                    for (int y = 0; y < atlasTileSize; ++y) {
+                        for (int x = 0; x < atlasTileSize; ++x) {
+                            Uint32 srcPixel = srcPixels[(srcY0 + y) * srcPitch + (srcX0 + x)];
+                            dstPixels[(dstY0 + y) * dstPitch + (dstX0 + x)] = srcPixel;
                         }
                     }
                 }
             }
+
             m_mapTexture = SDL_CreateTextureFromSurface(m_renderer, surface);
             SDL_DestroySurface(surface);
 

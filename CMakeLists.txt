@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(SDL3 REQUIRED)
 find_package(SDL3_ttf REQUIRED)
+find_package(SDL3_image REQUIRED)
 find_package(OpenMP REQUIRED)
 
 add_executable(Colpachki 
@@ -18,5 +19,6 @@ target_link_libraries(Colpachki
     PRIVATE 
     SDL3::SDL3 
     SDL3_ttf::SDL3_ttf
+    SDL3_image::SDL3_image
     OpenMP::OpenMP_CXX
 )
