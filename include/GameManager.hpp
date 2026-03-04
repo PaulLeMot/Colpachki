@@ -38,7 +38,9 @@ class GameManager{
             file.write(SeedName.data(), seedNameLen);
             return filepath;
         }
-        void LoadGame(){}
+        void LoadGame(){
+
+        }
 
     private:
 

@@ -382,7 +382,7 @@ class Game{
             zoom *= (1.0f + wheel * zoomSpeed);
         
             const float minZoom = 1.0f;
-            const float maxZoom = (N/256)*15.0f;
+            const float maxZoom = (N/256.0f)*15.0f;
             if (zoom < minZoom) zoom = minZoom;
             if (zoom > maxZoom) zoom = maxZoom;
         
@@ -451,7 +451,6 @@ class Game{
             Uint32* dstPixels = (Uint32*)surface->pixels;
             int dstPitch = surface->pitch / 4;
 
-            // Данные атласа
             Uint32* srcPixels = (Uint32*)m_atlasSurface->pixels;
             int srcPitch = m_atlasSurface->pitch / 4;
             int atlasTileSize = m_atlasSurface->w / 8;

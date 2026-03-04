@@ -30,7 +30,9 @@ class MainMenu {
     }
     void Render() {
         SDL_SetRenderDrawColor(m_renderer, 0, 0, 100, 255);
-        SDL_RenderClear(m_renderer);
+        //SDL_RenderClear(m_renderer);
+        SDL_FRect background = {0,0,m_width,m_height};
+        SDL_RenderFillRect(m_renderer, &background);
         for (auto& button : m_buttonsObjects) {
             button.RenderButton();
         }
@@ -106,14 +108,24 @@ class NewGameMenu {
                 240, 240, 240
             );
         }
+        for(size_t i = 0; i< m_arrows.size();++i){
+            m_buttonsObjects.emplace_back(
+                    m_renderer, m_font, m_arrows[i],
+                    m_width, m_height,
+                    m_width /4+2+(((m_width/8*3)-4)*i),
+                    m_height/8+((m_height/8)*6),
+                    m_width / 8, m_height / 8,
+                    240,240,240
+            );
+        }
         for(size_t i=0;i<m_inputs.size();++i){
             m_inputsObjects.emplace_back(
                 m_renderer, m_font, m_inputs[i],
                 m_width, m_height,
                 m_width/8,
-                (m_height/8)+(((m_height/8)+m_height/10)*i),
+                (m_height/12)+((m_height/10)*i),
                 (m_width/8)*6,
-                (m_height/8),
+                (m_height/12),
                 0,0,0, 31-(21*i)
             );
         }
@@ -123,7 +135,9 @@ class NewGameMenu {
 
     void Render() {
         SDL_SetRenderDrawColor(m_renderer, 0, 0, 100, 255);
-        SDL_RenderClear(m_renderer);
+        //SDL_RenderClear(m_renderer);
+        SDL_FRect background = {0,0,m_width,m_height};
+        SDL_RenderFillRect(m_renderer, &background);
         for (auto& button : m_buttonsObjects) {
             button.RenderButton();
         }
@@ -150,7 +164,7 @@ class NewGameMenu {
         }
     }
     private:
-    std::vector<std::string> m_buttons;
+    std::vector<std::string> m_buttons, m_arrows;
     std::vector<std::string>m_inputs;
     SDL_Renderer* m_renderer;
     TTF_Font* m_font;
@@ -161,6 +175,9 @@ class NewGameMenu {
     void InitObjects() {
         m_buttons = {
             "Back", "Play"
+        };
+        m_arrows={
+            "<-", "->"
         };
         m_inputs={
             "New World", "Seed"
