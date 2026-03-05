@@ -12,7 +12,7 @@
 #include "../include/ColpEngine.hpp"
 #include "../include/GameClass.hpp"
 #include "../include/GameManager.hpp"
-int State{0};
+uint8_t State{0};
 class MainMenu {
     public:
     MainMenu(SDL_Renderer* renderer, TTF_Font* font, const float width, const float height) : m_renderer(renderer), m_font(font), m_width(width), m_height(height){
@@ -94,11 +94,16 @@ class MainMenu {
 class NewGameMenu {
     public:
     NewGameMenu(SDL_Renderer* renderer, TTF_Font* font,
-        const float width, const float height, int* StatePtr) : 
+        const float width, const float height, uint8_t* StatePtr) : 
         m_renderer(renderer), m_font(font), 
         m_width(width), m_height(height), m_state(StatePtr){
         InitObjects();
-        for (size_t i = 0; i < m_buttons.size(); ++i) {
+        GameLoader GameLoader(Current);
+        CountSaves = GameLoader.CountSaves();
+        if(CountSaves>0){
+            GameLoader.GetSaves(SaveNames);
+        }
+        for (uint8_t i = 0; i < m_buttons.size(); ++i) {
             m_buttonsObjects.emplace_back(
                 m_renderer, m_font, m_buttons[i],
                 m_width, m_height,
@@ -108,17 +113,31 @@ class NewGameMenu {
                 240, 240, 240
             );
         }
-        for(size_t i = 0; i< m_arrows.size();++i){
-            m_buttonsObjects.emplace_back(
-                    m_renderer, m_font, m_arrows[i],
-                    m_width, m_height,
-                    m_width /4+2+(((m_width/8*3)-4)*i),
-                    m_height/8+((m_height/8)*6),
-                    m_width / 8, m_height / 8,
-                    240,240,240
-            );
+        if(CountSaves>0){
+            for(uint8_t i = 0; i< SaveNames.size();++i){
+                m_saveObjects.emplace_back(
+                        m_renderer, m_font, SaveNames[i],
+                        m_width, m_height,
+                        m_width/8,
+                        (m_height*7/20)+((m_height*21/320)*i),
+                        (m_width / 8)*6, m_height /16,
+                        240,240,240
+                );
+            }
         }
-        for(size_t i=0;i<m_inputs.size();++i){
+        if(CountSaves>8){
+            for(uint8_t i = 0; i< m_arrows.size();++i){
+                m_buttonsObjects.emplace_back(
+                        m_renderer, m_font, m_arrows[i],
+                        m_width, m_height,
+                        m_width /4+2+(((m_width/8*3)-4)*i),
+                        m_height/8+((m_height/8)*6),
+                        m_width / 8, m_height / 8,
+                        240,240,240
+                );
+            }
+        }
+        for(uint8_t i=0;i<m_inputs.size();++i){
             m_inputsObjects.emplace_back(
                 m_renderer, m_font, m_inputs[i],
                 m_width, m_height,
@@ -144,6 +163,9 @@ class NewGameMenu {
         for(auto& input : m_inputsObjects){
             input.RenderInput();
         }
+        for(auto& input : m_saveObjects){
+            input.RenderButton();
+        }
     }
     void HandleEvent(const SDL_Event& event) {
         if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
@@ -154,7 +176,7 @@ class NewGameMenu {
             }
             else if (m_buttonsObjects[1].GetButtonAt(mouseX, mouseY)) {
                 State = 2;
-                GameManager NewSave(m_inputsObjects[0].m_inputText,m_inputsObjects[1].m_inputText);
+                GameManagerNew NewSave(m_inputsObjects[0].m_inputText,m_inputsObjects[1].m_inputText);
                 NewSave.NewGame();
                 m_game.emplace(m_renderer, m_font, m_width, m_height, NewSave.Name, NewSave.Seed, m_state);
             }
@@ -169,9 +191,12 @@ class NewGameMenu {
     SDL_Renderer* m_renderer;
     TTF_Font* m_font;
     const float m_width, m_height;
-    std::vector<Button> m_buttonsObjects;
+    std::vector<Button> m_buttonsObjects, m_saveObjects;
     std::vector<Input> m_inputsObjects;
-    int* m_state;
+    uint8_t* m_state;
+    uint16_t Current{0};
+    uint16_t CountSaves{0};
+    std::vector<std::string>SaveNames{};
     void InitObjects() {
         m_buttons = {
             "Back", "Play"

@@ -21,7 +21,7 @@ class Game{
         Game(SDL_Renderer* renderer, TTF_Font* font, 
             const float width, const float height, 
             const std::string Name, const int64_t Seed,
-            int* StatePtr) : 
+            uint8_t* StatePtr) : 
             m_renderer(renderer), m_font(font),
             m_width(width), m_height(height), 
             Name(Name), Seed(Seed), m_state(StatePtr),
@@ -432,7 +432,7 @@ class Game{
         float zoom = 1.0f;
         float startPanX = 0.0f, startPanY = 0.0f;
         int startMouseX = 0, startMouseY = 0;
-        int* m_state;
+        uint8_t* m_state;
         static constexpr float TEX_SIZE = 4096.0f;
 
         void CreateMapTexture() {

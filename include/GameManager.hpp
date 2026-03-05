@@ -11,10 +11,13 @@
 #include <string>
 #include <cstdint>
 #include <fstream>
+#include <filesystem>
+#include <vector>
+#include <algorithm>
 
-class GameManager{
+class GameManagerNew{
     public:
-        GameManager(const std::string& Name,
+        GameManagerNew(const std::string& Name,
                     const std::string& SeedName)
                     : Name(Name), SeedName(SeedName){
             Seed = str2hash(SeedName);
@@ -38,9 +41,6 @@ class GameManager{
             file.write(SeedName.data(), seedNameLen);
             return filepath;
         }
-        void LoadGame(){
-
-        }
 
     private:
 
@@ -49,4 +49,60 @@ class GameManager{
             for (unsigned char c : s) h = (h ^ c) * 1099511628211ULL;
             return h;
         }
+};
+
+class GameLoader{
+    public:
+        GameLoader(uint16_t& Current):Current(Current){};
+
+        uint16_t CountSaves(){
+            for(const auto& entry : std::filesystem::directory_iterator("../saves/")){
+                if (std::filesystem::is_regular_file(entry.status())) {
+                    std::string ext = entry.path().extension().string();
+                    for (char& c : ext) c = std::tolower(c);
+                    if (ext == ".bin") {
+                        ++Count;
+                    }
+                }
+            }
+            return Count;
+        }
+
+    void GetSaves(std::vector<std::string>& SaveNames) {
+        SaveNames.clear();
+        namespace fs = std::filesystem;
+        fs::path savesDir = "../saves/";
+        if (!fs::exists(savesDir) || !fs::is_directory(savesDir)) {
+            return;
+        }
+    
+        uint16_t page = static_cast<uint16_t>(Current);
+        uint16_t start = page * 8;
+        uint16_t total = static_cast<uint16_t>(Count);
+        if (start >= total) {
+            return;
+        }
+        uint16_t end = std::min<uint16_t>(start + 8, total);
+        uint16_t idx = 0;
+        for (const auto& entry : fs::directory_iterator(savesDir)) {
+            if (!fs::is_regular_file(entry.status())) {
+                continue;
+            }
+    
+            if (idx < start) {
+                ++idx;
+                continue;
+            }
+    
+            if (idx < end) {
+                SaveNames.push_back(entry.path().filename().string());
+                ++idx;
+            } else {
+                break;
+            }
+        }
+    }
+    private:
+        uint16_t Count{0};
+        uint16_t Current;
 };
