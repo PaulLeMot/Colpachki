@@ -96,12 +96,11 @@ class NewGameMenu {
     NewGameMenu(SDL_Renderer* renderer, TTF_Font* font,
         const float width, const float height, uint8_t* StatePtr) : 
         m_renderer(renderer), m_font(font), 
-        m_width(width), m_height(height), m_state(StatePtr){
+        m_width(width), m_height(height), m_state(StatePtr), m_gameLoader(Current){
         InitObjects();
-        GameLoader GameLoader(Current);
-        CountSaves = GameLoader.CountSaves();
+        CountSaves = m_gameLoader.CountSaves();
         if(CountSaves>0){
-            GameLoader.GetSaves(SaveNames);
+            m_gameLoader.GetSaves(SaveNames);
         }
         for (uint8_t i = 0; i < m_buttons.size(); ++i) {
             m_buttonsObjects.emplace_back(
@@ -114,16 +113,7 @@ class NewGameMenu {
             );
         }
         if(CountSaves>0){
-            for(uint8_t i = 0; i< SaveNames.size();++i){
-                m_saveObjects.emplace_back(
-                        m_renderer, m_font, SaveNames[i],
-                        m_width, m_height,
-                        m_width/8,
-                        (m_height*7/20)+((m_height*21/320)*i),
-                        (m_width / 8)*6, m_height /16,
-                        240,240,240
-                );
-            }
+            UpdateSaveButtons();
         }
         if(CountSaves>8){
             for(uint8_t i = 0; i< m_arrows.size();++i){
@@ -179,6 +169,15 @@ class NewGameMenu {
                 GameManagerNew NewSave(m_inputsObjects[0].m_inputText,m_inputsObjects[1].m_inputText);
                 NewSave.NewGame();
                 m_game.emplace(m_renderer, m_font, m_width, m_height, NewSave.Name, NewSave.Seed, m_state);
+            }else if (m_buttonsObjects.size() > 2 && m_buttonsObjects[2].GetButtonAt(mouseX, mouseY)) {
+                if (Current > 0) Current--;
+                m_gameLoader.GetSaves(SaveNames);
+                UpdateSaveButtons();
+            }
+            else if (m_buttonsObjects.size() > 3 && m_buttonsObjects[3].GetButtonAt(mouseX, mouseY)) {
+                Current++;
+                m_gameLoader.GetSaves(SaveNames);
+                UpdateSaveButtons();
             }
         }
         for(auto& input : m_inputsObjects){
@@ -197,6 +196,7 @@ class NewGameMenu {
     uint16_t Current{0};
     uint16_t CountSaves{0};
     std::vector<std::string>SaveNames{};
+    GameLoader m_gameLoader;
     void InitObjects() {
         m_buttons = {
             "Back", "Play"
@@ -209,6 +209,19 @@ class NewGameMenu {
         };
     }
 
+    void UpdateSaveButtons(){
+        m_saveObjects.clear();
+        for(uint8_t i = 0; i< SaveNames.size();++i){
+            m_saveObjects.emplace_back(
+                    m_renderer, m_font, SaveNames[i],
+                    m_width, m_height,
+                    m_width/8,
+                    (m_height*7/20)+((m_height*21/320)*i),
+                    (m_width / 8)*6, m_height /16,
+                    240,240,240
+            );
+        }
+    }
     /*void HandleKeyPress(const SDL_KeyboardEvent& keyEvent) {
         SDL_Keycode key = keyEvent.key;
         int Current = 0;
