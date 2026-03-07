@@ -51,58 +51,50 @@ class GameManagerNew{
         }
 };
 
-class GameLoader{
-    public:
-        GameLoader(uint16_t& Current):Current(Current){};
+class GameLoader {
+public:
+    GameLoader(uint16_t& Current) : Current(Current) {}
 
-        uint16_t CountSaves(){
-            for(const auto& entry : std::filesystem::directory_iterator("../saves/")){
-                if (std::filesystem::is_regular_file(entry.status())) {
-                    std::string ext = entry.path().extension().string();
-                    for (char& c : ext) c = std::tolower(c);
-                    if (ext == ".bin") {
-                        ++Count;
-                    }
-                }
+    uint16_t CountSaves() {
+        uint16_t count = 0;
+        for (const auto& entry : std::filesystem::directory_iterator("../saves/")) {
+            if (std::filesystem::is_regular_file(entry.status())) {
+                std::string ext = entry.path().extension().string();
+                for (char& c : ext) c = std::tolower(c);
+                if (ext == ".bin") ++count;
             }
-            return Count;
         }
+        return count;
+    }
 
     void GetSaves(std::vector<std::string>& SaveNames) {
         SaveNames.clear();
         namespace fs = std::filesystem;
         fs::path savesDir = "../saves/";
-        if (!fs::exists(savesDir) || !fs::is_directory(savesDir)) {
-            return;
-        }
-    
-        uint16_t page = static_cast<uint16_t>(Current);
-        uint16_t start = page * 8;
-        uint16_t total = static_cast<uint16_t>(Count);
-        if (start >= total) {
-            return;
-        }
-        uint16_t end = std::min<uint16_t>(start + 8, total);
-        uint16_t idx = 0;
+        if (!fs::exists(savesDir) || !fs::is_directory(savesDir)) return;
+
+        std::vector<std::string> allBins;
         for (const auto& entry : fs::directory_iterator(savesDir)) {
-            if (!fs::is_regular_file(entry.status())) {
-                continue;
+            if (fs::is_regular_file(entry.status())) {
+                std::string ext = entry.path().extension().string();
+                for (char& c : ext) c = std::tolower(c);
+                if (ext == ".bin") {
+                    allBins.push_back(entry.path().filename().string());
+                }
             }
-    
-            if (idx < start) {
-                ++idx;
-                continue;
-            }
-    
-            if (idx < end) {
-                SaveNames.push_back(entry.path().filename().string());
-                ++idx;
-            } else {
-                break;
-            }
+        }
+        std::sort(allBins.begin(), allBins.end());
+
+        uint16_t page = Current;
+        uint16_t start = page * 8;
+        uint16_t total = static_cast<uint16_t>(allBins.size());
+        if (start >= total) return;
+        uint16_t end = std::min<uint16_t>(start + 8, total);
+        for (uint16_t i = start; i < end; ++i) {
+            SaveNames.push_back(allBins[i]);
         }
     }
-    private:
-        uint16_t Count{0};
-        uint16_t Current;
+
+private:
+    uint16_t& Current;
 };

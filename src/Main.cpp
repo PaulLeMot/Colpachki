@@ -165,19 +165,26 @@ class NewGameMenu {
                 State = 0;
             }
             else if (m_buttonsObjects[1].GetButtonAt(mouseX, mouseY)) {
-                State = 2;
                 GameManagerNew NewSave(m_inputsObjects[0].m_inputText,m_inputsObjects[1].m_inputText);
                 NewSave.NewGame();
+                Current = 0;
+                m_gameLoader.GetSaves(SaveNames);
+                UpdateSaveButtons();
+                State = 2;
                 m_game.emplace(m_renderer, m_font, m_width, m_height, NewSave.Name, NewSave.Seed, m_state);
-            }else if (m_buttonsObjects.size() > 2 && m_buttonsObjects[2].GetButtonAt(mouseX, mouseY)) {
+            }
+            else if (m_buttonsObjects.size() > 2 && m_buttonsObjects[2].GetButtonAt(mouseX, mouseY)) {
                 if (Current > 0) Current--;
                 m_gameLoader.GetSaves(SaveNames);
                 UpdateSaveButtons();
             }
             else if (m_buttonsObjects.size() > 3 && m_buttonsObjects[3].GetButtonAt(mouseX, mouseY)) {
-                Current++;
-                m_gameLoader.GetSaves(SaveNames);
-                UpdateSaveButtons();
+                uint16_t total = m_gameLoader.CountSaves();
+                if ((Current + 1) * 8 < total) {
+                    Current++;
+                    m_gameLoader.GetSaves(SaveNames);
+                    UpdateSaveButtons();
+                }
             }
         }
         for(auto& input : m_inputsObjects){
