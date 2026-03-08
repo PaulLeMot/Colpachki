@@ -333,7 +333,20 @@ class Game{
                 std::swap(Map, newMap);
             }
         }
-        
+        void HandleTileClick(int mouseX, int mouseY) {
+            if (mouseX >= Otstup && mouseX <= Otstup + m_height && mouseY >= 0 && mouseY <= m_height) {
+                float tileSize = (m_height / N) * zoom;
+                float worldX = panX + (mouseX - Otstup) / tileSize;
+                float worldY = panY + mouseY / tileSize;
+                int ix = static_cast<int>(std::floor(worldX)) % N;
+                if (ix < 0) ix += N;
+                int iy = static_cast<int>(std::floor(worldY)) % N;
+                if (iy < 0) iy += N;
+
+                const Tile& tile = Map[iy * N + ix];
+                SDL_Log("Tile clicked: (%d, %d) biome=%d zone=%d", ix, iy, tile.biome, tile.zone);
+            }
+        }
         void HandleEvent(const SDL_Event& event) {
             if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
                 int mouseX = static_cast<int>(event.button.x);
@@ -343,7 +356,15 @@ class Game{
                     return;
                 }
             }
-    
+            if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.button == SDL_BUTTON_LEFT) {
+                int mouseX = static_cast<int>(event.button.x);
+                int mouseY = static_cast<int>(event.button.y);
+                if (m_buttonsObjects[0].GetButtonAt(mouseX, mouseY)) {
+                    if(m_state) *m_state = 1;
+                    return;
+                }
+                HandleTileClick(mouseX, mouseY);
+            }
         if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.button == SDL_BUTTON_LEFT) {
             isDragging = true;
             startMouseX = event.button.x;
