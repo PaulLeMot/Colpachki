@@ -9,22 +9,24 @@
 #include <SDL3/SDL_main.h>
 #include <vector>
 #include <optional>
+#include <filesystem>
 #include "../include/ColpEngine.hpp"
 #include "../include/GameClass.hpp"
 #include "../include/GameManager.hpp"
 uint8_t State{0};
+std::vector<uint16_t> btnRGB{210,210,210};
 class MainMenu {
     public:
     MainMenu(SDL_Renderer* renderer, TTF_Font* font, const float width, const float height) : m_renderer(renderer), m_font(font), m_width(width), m_height(height){
         InitButtons();
-        for (size_t i = 0; i < m_buttons.size(); ++i) {
+        for (uint8_t i = 0; i < m_buttons.size(); ++i) {
             m_buttonsObjects.emplace_back(
                 m_renderer, m_font, m_buttons[i],
                 m_width, m_height,
                 m_width / 3,
                 m_height / 8 + (m_height / 10 + ((m_height / 8) * i)),
                 m_width / 3, m_height / 10,
-                240, 240, 240
+                btnRGB[0],btnRGB[1],btnRGB[2]
             );
         }
     }
@@ -109,7 +111,7 @@ class NewGameMenu {
                 m_width / 8+((m_width/8*5)*i),
                 m_height/8+((m_height/8)*6),
                 m_width / 8, m_height / 8,
-                240, 240, 240
+                btnRGB[0],btnRGB[1],btnRGB[2]
             );
         }
         if(CountSaves>0){
@@ -123,7 +125,7 @@ class NewGameMenu {
                         m_width /4+2+(((m_width/8*3)-4)*i),
                         m_height/8+((m_height/8)*6),
                         m_width / 8, m_height / 8,
-                        240,240,240
+                        btnRGB[0],btnRGB[1],btnRGB[2]
                 );
             }
         }
@@ -147,14 +149,17 @@ class NewGameMenu {
         //SDL_RenderClear(m_renderer);
         SDL_FRect background = {0,0,m_width,m_height};
         SDL_RenderFillRect(m_renderer, &background);
-        for (auto& button : m_buttonsObjects) {
-            button.RenderButton();
+        for (auto& n : m_buttonsObjects) {
+            n.RenderButton();
         }
-        for(auto& input : m_inputsObjects){
-            input.RenderInput();
+        for(auto& n : m_inputsObjects){
+            n.RenderInput();
         }
-        for(auto& input : m_saveObjects){
-            input.RenderButton();
+        for(auto& n : m_saveObjects){
+            n.RenderButton();
+        }
+        for(auto& n : m_deleteSaves){
+            n.RenderButton();
         }
     }
     void HandleEvent(const SDL_Event& event) {
@@ -165,6 +170,10 @@ class NewGameMenu {
                 State = 0;
             }
             else if (m_buttonsObjects[1].GetButtonAt(mouseX, mouseY)) {
+                if (m_inputsObjects[0].m_inputText.empty()) {
+                    m_inputsObjects[0].m_inputText = "New World";
+                }
+
                 GameManagerNew NewSave(m_inputsObjects[0].m_inputText,m_inputsObjects[1].m_inputText);
                 NewSave.NewGame();
                 Current = 0;
@@ -186,9 +195,42 @@ class NewGameMenu {
                     UpdateSaveButtons();
                 }
             }
+            for (size_t i = 0; i < m_deleteSaves.size(); ++i) {
+                if (m_deleteSaves[i].GetButtonAt(mouseX, mouseY)) {
+                    std::string filepath = "../saves/" + SaveNames[i] + ".bin";
+                    std::filesystem::remove(filepath);
+                    uint16_t total = m_gameLoader.CountSaves();
+                    if (total == 0) {
+                        Current = 0;
+                    } else {
+                        uint16_t maxPage = (total + 7) / 8;
+                        if (Current >= maxPage) {
+                            Current = maxPage - 1;
+                        }
+                    }
+                    m_gameLoader.GetSaves(SaveNames);
+                    UpdateSaveButtons();
+                    return;
+                }
+            }
+            for (size_t i = 0; i < m_saveObjects.size(); ++i) {
+                if (m_saveObjects[i].GetButtonAt(mouseX, mouseY)) {
+                    GameLoader::GameData data;
+                    if (m_gameLoader.LoadGameData(SaveNames[i], data)) {
+                        State = 2;
+                        m_game.emplace(m_renderer, m_font, m_width, m_height, data.name, data.seed, m_state);
+                    }
+                    return;
+                }
+            }
         }
         for(auto& input : m_inputsObjects){
             input.HandleEvent(event);
+        }
+    }
+    void ClearInputs() {
+        for (auto& input : m_inputsObjects) {
+            input.Clear();
         }
     }
     private:
@@ -197,7 +239,7 @@ class NewGameMenu {
     SDL_Renderer* m_renderer;
     TTF_Font* m_font;
     const float m_width, m_height;
-    std::vector<Button> m_buttonsObjects, m_saveObjects;
+    std::vector<Button> m_buttonsObjects, m_saveObjects, m_deleteSaves;
     std::vector<Input> m_inputsObjects;
     uint8_t* m_state;
     uint16_t Current{0};
@@ -218,14 +260,61 @@ class NewGameMenu {
 
     void UpdateSaveButtons(){
         m_saveObjects.clear();
-        for(uint8_t i = 0; i< SaveNames.size();++i){
-            m_saveObjects.emplace_back(
-                    m_renderer, m_font, SaveNames[i],
+        m_deleteSaves.clear();
+
+        uint16_t totalSaves = m_gameLoader.CountSaves();
+
+        m_buttonsObjects.clear();
+
+        m_buttonsObjects.emplace_back(
+            m_renderer, m_font, m_buttons[0],
+            m_width, m_height,
+            m_width / 8,
+            m_height/8 + ((m_height/8)*6),
+            m_width / 8, m_height / 8,
+            btnRGB[0], btnRGB[1], btnRGB[2]
+        );
+        m_buttonsObjects.emplace_back(
+            m_renderer, m_font, m_buttons[1],
+            m_width, m_height,
+            m_width / 8 + (m_width/8*5),
+            m_height/8 + ((m_height/8)*6),
+            m_width / 8, m_height / 8,
+            btnRGB[0], btnRGB[1], btnRGB[2]
+        );
+
+        if (totalSaves > 8) {
+            for (uint8_t i = 0; i < m_arrows.size(); ++i) {
+                m_buttonsObjects.emplace_back(
+                    m_renderer, m_font, m_arrows[i],
                     m_width, m_height,
-                    m_width/8,
-                    (m_height*7/20)+((m_height*21/320)*i),
-                    (m_width / 8)*6, m_height /16,
-                    240,240,240
+                    m_width / 4 + 2 + (((m_width/8*3)-4) * i),
+                    m_height/8 + ((m_height/8)*6),
+                    m_width / 8, m_height / 8,
+                    btnRGB[0], btnRGB[1], btnRGB[2]
+                );
+            }
+        }
+
+        for (uint8_t i = 0; i < SaveNames.size(); ++i) {
+            m_saveObjects.emplace_back(
+                m_renderer, m_font, SaveNames[i],
+                m_width, m_height,
+                m_width/8,
+                (m_height*7/20) + ((m_height*21/320) * i),
+                (m_width/8)*6, m_height/16,
+                btnRGB[0], btnRGB[1], btnRGB[2]
+            );
+
+            float deleteX = m_width/8 + (m_width/8)*6 + 5;
+            float deleteY = (m_height*7/20) + ((m_height*21/320) * i);
+            float deleteSize = m_height/16;
+            m_deleteSaves.emplace_back(
+                m_renderer, m_font, "X",
+                m_width, m_height,
+                deleteX, deleteY,
+                deleteSize, deleteSize,
+                btnRGB[0], btnRGB[1], btnRGB[2]
             );
         }
     }
@@ -300,6 +389,7 @@ int main(int argc, char *argv[]){
     MainMenu MMenu(renderer, font, width, height);
     NewGameMenu GMenu(renderer, font, width,height, &State);
     bool d = 0;
+    uint8_t prevState = 0;
     Uint32 lastTime = SDL_GetTicks();
     while(!d){
         Uint32 crntTime = SDL_GetTicks();
@@ -318,6 +408,12 @@ int main(int argc, char *argv[]){
                         break;
                 case 2: GMenu.m_game->HandleEvent(event);
             }
+        }
+        if (State != prevState) {
+            if (State == 1) {
+                GMenu.ClearInputs();
+            }
+            prevState = State;
         }
         switch(State){
             case 0: MMenu.Render();

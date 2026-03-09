@@ -14,13 +14,22 @@
 #include <filesystem>
 #include <vector>
 #include <algorithm>
+#include <random>
 
 class GameManagerNew{
     public:
         GameManagerNew(const std::string& Name,
                     const std::string& SeedName)
                     : Name(Name), SeedName(SeedName){
-            Seed = str2hash(SeedName);
+            if (SeedName.empty()) {
+                //this is cringe i know:
+                std::random_device rd;
+                std::mt19937_64 gen(rd());
+                uint64_t randomNum = gen();
+                Seed = str2hash(std::to_string(randomNum));
+            } else {
+                Seed = str2hash(SeedName);
+            }
         }
 
         std::string Name, SeedName;
@@ -79,7 +88,7 @@ public:
                 std::string ext = entry.path().extension().string();
                 for (char& c : ext) c = std::tolower(c);
                 if (ext == ".bin") {
-                    allBins.push_back(entry.path().filename().string());
+                    allBins.push_back(entry.path().stem().string());
                 }
             }
         }
@@ -93,6 +102,41 @@ public:
         for (uint16_t i = start; i < end; ++i) {
             SaveNames.push_back(allBins[i]);
         }
+    }
+    struct GameData {
+        std::string name;
+        uint64_t seed;
+        std::string seedName;
+    };
+
+    bool LoadGameData(const std::string& worldName, GameData& outData) {
+        namespace fs = std::filesystem;
+        fs::path filepath = fs::path("../saves/") / (worldName + ".bin");
+        if (!fs::exists(filepath)) return false;
+
+        std::ifstream file(filepath, std::ios::binary);
+        if (!file.is_open()) return false;
+
+        file.read(reinterpret_cast<char*>(&outData.seed), sizeof(outData.seed));
+        if (!file) return false;
+
+        uint32_t nameLen;
+        file.read(reinterpret_cast<char*>(&nameLen), sizeof(nameLen));
+        if (!file) return false;
+
+        outData.name.resize(nameLen);
+        file.read(&outData.name[0], nameLen);
+        if (!file) return false;
+
+        uint32_t seedNameLen;
+        file.read(reinterpret_cast<char*>(&seedNameLen), sizeof(seedNameLen));
+        if (!file) return false;
+
+        outData.seedName.resize(seedNameLen);
+        file.read(&outData.seedName[0], seedNameLen);
+        if (!file) return false;
+
+        return true;
     }
 
 private:

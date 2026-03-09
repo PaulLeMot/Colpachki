@@ -49,8 +49,13 @@ class Button{
             FreeButtonTextures();
         }
         void RenderButton(){
- 
-            SDL_SetRenderDrawColor(m_renderer, r,g,b, 255);
+            float m_mouseX, m_mouseY;
+            SDL_GetMouseState(&m_mouseX, &m_mouseY);
+            bool hovered = (m_mouseX >= x && m_mouseX <= x + w && m_mouseY >= y && m_mouseY <= y + h);
+            int currentR = hovered? 250 : r;
+            int currentG = hovered? 250 : g;
+            int currentB = hovered? 250 : b;
+            SDL_SetRenderDrawColor(m_renderer, currentR, currentG, currentB, 255);
                 SDL_FRect buttonRect = {x,y,w,h};
                 SDL_RenderFillRect(m_renderer, &buttonRect);
                 if (m_buttonTexture) {

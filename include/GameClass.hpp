@@ -365,14 +365,14 @@ class Game{
                 }
                 HandleTileClick(mouseX, mouseY);
             }
-        if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.button == SDL_BUTTON_LEFT) {
+        if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.button == SDL_BUTTON_MIDDLE) {
             isDragging = true;
             startMouseX = event.button.x;
             startMouseY = event.button.y;
             startPanX = panX;
             startPanY = panY;
         }
-        if (event.type == SDL_EVENT_MOUSE_BUTTON_UP && event.button.button == SDL_BUTTON_LEFT) {
+        if (event.type == SDL_EVENT_MOUSE_BUTTON_UP && event.button.button == SDL_BUTTON_MIDDLE) {
             isDragging = false;
         }
         if (event.type == SDL_EVENT_MOUSE_MOTION && isDragging) {
