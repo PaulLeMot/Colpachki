@@ -47,6 +47,7 @@ class Game{
                 GenerateForest();
                 GenerateMountains();
                 AdjustMountainZones();
+                GenerateCapitals();
                 InitButtons();
                 m_buttonsObjects.emplace_back(
                     m_renderer,m_font,m_buttons[0],
@@ -54,10 +55,21 @@ class Game{
                     m_width-(m_width/10),
                     0,
                     m_width/10,m_width/10,240,240,240);
-                    CreateMapTexture(); 
+                    CreateMapTexture();
+                    m_atlasTexture = SDL_CreateTextureFromSurface(m_renderer, m_atlasSurface);
+                    if (!m_atlasTexture) {
+                        SDL_Log("Failed to create atlas texture: %s", SDL_GetError());
+                    }
+                    if (m_atlasTexture) {
+                        SDL_SetTextureScaleMode(m_atlasTexture, SDL_SCALEMODE_PIXELART);
+                    }
+                    m_atlasTileSize = m_atlasSurface->w / 8;
+                    SDL_DestroySurface(m_atlasSurface);
+                    m_atlasSurface = nullptr;
         }
         ~Game() {
             if (m_mapTexture) SDL_DestroyTexture(m_mapTexture);
+            if (m_atlasTexture) SDL_DestroyTexture(m_atlasTexture);
         }
         void Render() {
             SDL_SetRenderDrawColor(m_renderer, 0, 0, 0, 255);
@@ -85,12 +97,32 @@ class Game{
                     SDL_RenderTexture(m_renderer, m_mapTexture, nullptr, &dest);
                 }
             }
+            RenderBuildings();
 
             SDL_SetRenderClipRect(m_renderer, nullptr);
 
             m_buttonsObjects[0].RenderButton();
         }
+        void RenderBuildings() {
+            float tileSize = (m_height / N) * zoom;
+            for (int i = 0; i < N; ++i) {
+                for (int j = 0; j < N; ++j) {
+                    const Tile& tile = Map[i * N + j];
+                    if (tile.buildingLevel == 0) continue;
 
+                    float screenX = Otstup + (j - panX) * tileSize;
+                    float screenY = (i - panY) * tileSize;
+
+                    int srcX0 = (2 + tile.buildingLevel) * m_atlasTileSize;
+                    int srcY0 = (tile.zone >= 0) ? tile.zone * m_atlasTileSize : 0;
+
+                    SDL_FRect srcRect = { (float)srcX0, (float)srcY0, (float)m_atlasTileSize, (float)m_atlasTileSize };
+                    SDL_FRect dstRect = { screenX, screenY, tileSize, tileSize };
+
+                    SDL_RenderTexture(m_renderer, m_atlasTexture, &srcRect, &dstRect);
+                }
+            }
+        }
         void CreateMap() {
             std::mt19937 rng(Seed);
             std::vector<int> permutation(256);
@@ -221,8 +253,7 @@ class Game{
                     }
 
                     Map[i * N + j] = {static_cast<uint16_t>(i), static_cast<uint16_t>(j), 
-                    static_cast<uint8_t>(biome), static_cast<int8_t>(zone)};
-                    Map[i * N + j].mountain = false;
+                    static_cast<uint8_t>(biome), static_cast<int8_t>(zone), false, false, 0};
                 }
             }
             m_perm = p;
@@ -504,6 +535,43 @@ class Game{
             }
             Map = std::move(newMap);
         }
+        void GenerateCapitals() {
+            const int targetCount = 100;
+            const float minDist = 10.0f;
+            std::vector<std::pair<int,int>> positions;
+            std::mt19937 rng(Seed);
+            std::uniform_int_distribution<int> dist(0, N-1);
+
+            auto distance = [&](int x1, int y1, int x2, int y2) {
+                int dx = std::abs(x1 - x2);
+                int dy = std::abs(y1 - y2);
+                dx = std::min(dx, N - dx);
+                dy = std::min(dy, N - dy);
+                return std::sqrt(dx*dx + dy*dy);
+            };
+
+            int attempts = 0;
+            const int maxAttempts = 10000;
+            while (positions.size() < targetCount && attempts < maxAttempts) {
+                int x = dist(rng);
+                int y = dist(rng);
+                int idx = y * N + x;
+                if (Map[idx].biome != 0) continue;
+
+                bool ok = true;
+                for (auto& pos : positions) {
+                    if (distance(x, y, pos.first, pos.second) < minDist) {
+                        ok = false;
+                        break;
+                    }
+                }
+                if (ok) {
+                    positions.emplace_back(x, y);
+                    Map[idx].buildingLevel = 3;
+                }
+                attempts++;
+            }
+        }
         void HandleTileClick(int mouseX, int mouseY) {
             if (mouseX >= Otstup && mouseX <= Otstup + m_height && mouseY >= 0 && mouseY <= m_height) {
                 float tileSize = (m_height / N) * zoom;
@@ -602,6 +670,7 @@ class Game{
             int8_t zone;
             bool forest;
             bool mountain;
+            uint8_t buildingLevel;
         };
         
         void InitButtons(){
@@ -610,6 +679,7 @@ class Game{
     
         private:
         SDL_Texture* m_mapTexture;
+        SDL_Texture* m_atlasTexture;
         SDL_Surface* m_atlasSurface;
         SDL_Renderer* m_renderer;
         TTF_Font* m_font;
@@ -620,6 +690,7 @@ class Game{
         std::vector<int> m_perm;
         const uint16_t N = 256;
         int Otstup=(m_width-m_height)/2;
+        int m_atlasTileSize;
         std::vector<std::string>m_buttons;
         std::vector<Button>m_buttonsObjects;
         bool isDragging = false;
