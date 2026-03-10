@@ -56,20 +56,20 @@ class Game{
                     0,
                     m_width/10,m_width/10,240,240,240);
                     CreateMapTexture();
-                    m_atlasTexture = SDL_CreateTextureFromSurface(m_renderer, m_atlasSurface);
-                    if (!m_atlasTexture) {
-                        SDL_Log("Failed to create atlas texture: %s", SDL_GetError());
-                    }
-                    if (m_atlasTexture) {
-                        SDL_SetTextureScaleMode(m_atlasTexture, SDL_SCALEMODE_PIXELART);
-                    }
+                    //m_atlasTexture = SDL_CreateTextureFromSurface(m_renderer, m_atlasSurface);
+                    //if (!m_atlasTexture) {
+                    //    SDL_Log("Failed to create atlas texture: %s", SDL_GetError());
+                    //}
+                    //if (m_atlasTexture) {
+                    //    SDL_SetTextureScaleMode(m_atlasTexture, SDL_SCALEMODE_PIXELART);
+                    //}
                     m_atlasTileSize = m_atlasSurface->w / 8;
                     SDL_DestroySurface(m_atlasSurface);
                     m_atlasSurface = nullptr;
         }
         ~Game() {
             if (m_mapTexture) SDL_DestroyTexture(m_mapTexture);
-            if (m_atlasTexture) SDL_DestroyTexture(m_atlasTexture);
+            //if (m_atlasTexture) SDL_DestroyTexture(m_atlasTexture);
         }
         void Render() {
             SDL_SetRenderDrawColor(m_renderer, 0, 0, 0, 255);
@@ -97,17 +97,33 @@ class Game{
                     SDL_RenderTexture(m_renderer, m_mapTexture, nullptr, &dest);
                 }
             }
-            RenderBuildings();
+            //RenderBuildings();
 
             SDL_SetRenderClipRect(m_renderer, nullptr);
 
             m_buttonsObjects[0].RenderButton();
         }
-        void RenderBuildings() {
+/*       void RenderBuildings() {
             float tileSize = (m_height / N) * zoom;
-            for (int i = 0; i < N; ++i) {
-                for (int j = 0; j < N; ++j) {
-                    const Tile& tile = Map[i * N + j];
+
+            float worldLeft   = panX - Otstup / tileSize;
+            float worldRight  = worldLeft + m_width / tileSize;
+            float worldTop    = panY;
+            float worldBottom = panY + m_height / tileSize;
+
+            int startJ = static_cast<int>(std::floor(worldLeft));
+            int endJ   = static_cast<int>(std::ceil(worldRight));
+            int startI = static_cast<int>(std::floor(worldTop));
+            int endI   = static_cast<int>(std::ceil(worldBottom));
+
+            for (int i = startI; i < endI; ++i) {
+                for (int j = startJ; j < endJ; ++j) {
+                    int ii = i % N;
+                    if (ii < 0) ii += N;
+                    int jj = j % N;
+                    if (jj < 0) jj += N;
+
+                    const Tile& tile = Map[ii * N + jj];
                     if (tile.buildingLevel == 0) continue;
 
                     float screenX = Otstup + (j - panX) * tileSize;
@@ -122,7 +138,7 @@ class Game{
                     SDL_RenderTexture(m_renderer, m_atlasTexture, &srcRect, &dstRect);
                 }
             }
-        }
+        }*/
         void CreateMap() {
             std::mt19937 rng(Seed);
             std::vector<int> permutation(256);
@@ -642,7 +658,7 @@ class Game{
             zoom *= (1.0f + wheel * zoomSpeed);
         
             const float minZoom = 1.0f;
-            const float maxZoom = (N/256.0f)*15.0f;
+            const float maxZoom = (N/256.0f)*25.0f;
             if (zoom < minZoom) zoom = minZoom;
             if (zoom > maxZoom) zoom = maxZoom;
         
@@ -679,7 +695,7 @@ class Game{
     
         private:
         SDL_Texture* m_mapTexture;
-        SDL_Texture* m_atlasTexture;
+        //SDL_Texture* m_atlasTexture;
         SDL_Surface* m_atlasSurface;
         SDL_Renderer* m_renderer;
         TTF_Font* m_font;
@@ -707,12 +723,6 @@ class Game{
             SDL_Surface* surface = SDL_CreateSurface(TEX_SIZE, TEX_SIZE, SDL_PIXELFORMAT_RGBA8888);
             if (!surface) return;
 
-            const SDL_PixelFormatDetails* dstFormat = SDL_GetPixelFormatDetails(surface->format);
-            if (!dstFormat) {
-                SDL_DestroySurface(surface);
-                return;
-            }
-
             float baseTileSize = TEX_SIZE / N;
             Uint32* dstPixels = (Uint32*)surface->pixels;
             int dstPitch = surface->pitch / 4;
@@ -724,28 +734,43 @@ class Game{
             for (int i = 0; i < N; ++i) {
                 for (int j = 0; j < N; ++j) {
                     const Tile& tile = Map[i * N + j];
-                    int tileType;
-                    if (tile.biome == 0) {
-                        tileType = tile.zone;
-                    } else {
-                        tileType = 6;
-                    }
-
-                    int srcX0 = 0;
-                    int srcY0 = tileType * atlasTileSize;
-                    if (tile.mountain) {
-                        srcX0 = 1 * atlasTileSize;
-                    } else if (tile.forest) {
-                        srcX0 = 2 * atlasTileSize;
-                    }
-
                     int dstX0 = static_cast<int>(j * baseTileSize);
                     int dstY0 = static_cast<int>(i * baseTileSize);
+                    int bgTileType;
+                    if (tile.biome == 0) {
+                        bgTileType = tile.zone;
+                    } else {
+                        bgTileType = 6;
+                    }
+                    int bgSrcX0 = 0;
+                    if (tile.mountain) {
+                        bgSrcX0 = 1 * atlasTileSize;
+                    } else if (tile.forest) {
+                        bgSrcX0 = 2 * atlasTileSize;
+                    }
 
+                    int bgSrcY0 = bgTileType * atlasTileSize;
+                    if (bgTileType < 0) bgSrcY0 = 0;
                     for (int y = 0; y < atlasTileSize; ++y) {
                         for (int x = 0; x < atlasTileSize; ++x) {
-                            Uint32 srcPixel = srcPixels[(srcY0 + y) * srcPitch + (srcX0 + x)];
+                            Uint32 srcPixel = srcPixels[(bgSrcY0 + y) * srcPitch + (bgSrcX0 + x)];
                             dstPixels[(dstY0 + y) * dstPitch + (dstX0 + x)] = srcPixel;
+                        }
+                    }
+                    if (tile.buildingLevel > 0) {
+                        int buildingSrcX0 = (2 + tile.buildingLevel) * atlasTileSize;
+                        int buildingSrcY0 = (tile.zone >= 0) ? tile.zone * atlasTileSize : 0;
+
+                        for (int y = 0; y < atlasTileSize; ++y) {
+                            for (int x = 0; x < atlasTileSize; ++x) {
+                                Uint32 srcPixel = srcPixels[(buildingSrcY0 + y) * srcPitch + (buildingSrcX0 + x)];
+                                Uint32& dstPixel = dstPixels[(dstY0 + y) * dstPitch + (dstX0 + x)];
+
+                                Uint8 alpha = (srcPixel >> 24) & 0xFF;
+                                if (alpha > 0) {
+                                    dstPixel = srcPixel;
+                                }
+                            }
                         }
                     }
                 }
