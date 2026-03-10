@@ -647,23 +647,69 @@ class Game{
         if (event.type == SDL_EVENT_MOUSE_WHEEL) {
             float mouseX, mouseY;
             SDL_GetMouseState(&mouseX, &mouseY);
+            const float step = 0.05f;
+            float factor = 1.0f + event.wheel.y * step;
+            if (factor < 0.1f) factor = 0.1f;
+            ZoomAt(mouseX, mouseY, factor);
+        }
+        if (event.type == SDL_EVENT_KEY_DOWN) {
+            switch (event.key.key) {
+                case SDLK_W: m_upPressed = true; break;
+                case SDLK_S: m_downPressed = true; break;
+                case SDLK_A: m_leftPressed = true; break;
+                case SDLK_D: m_rightPressed = true; break;
+                case SDLK_Z: m_zoomInPressed = true; break;
+                case SDLK_X: m_zoomOutPressed = true; break;
+            }
+        }
+        if (event.type == SDL_EVENT_KEY_UP) {
+            switch (event.key.key) {
+                case SDLK_W: m_upPressed = false; break;
+                case SDLK_S: m_downPressed = false; break;
+                case SDLK_A: m_leftPressed = false; break;
+                case SDLK_D: m_rightPressed = false; break;
+                case SDLK_Z: m_zoomInPressed = false; break;
+                case SDLK_X: m_zoomOutPressed = false; break;
+            }
+        }
+        }
+        void Update(float deltaTime) {
+            float moveSpeed = 300.0f / zoom;
+            float dx = 0.0f, dy = 0.0f;
+            if (m_leftPressed) dx -= moveSpeed * deltaTime;
+            if (m_rightPressed) dx += moveSpeed * deltaTime;
+            if (m_upPressed) dy -= moveSpeed * deltaTime;
+            if (m_downPressed) dy += moveSpeed * deltaTime;
         
+            if (dx != 0.0f || dy != 0.0f) {
+                panX += dx;
+                panY += dy;
+                panX = fmod(panX, (float)N);
+                if (panX < 0) panX += N;
+                panY = fmod(panY, (float)N);
+                if (panY < 0) panY += N;
+            }
+            if (m_zoomInPressed || m_zoomOutPressed) {
+                float direction = 0.0f;
+                if (m_zoomInPressed) direction += 1.0f;
+                if (m_zoomOutPressed) direction -= 1.0f;
+                if (direction != 0.0f) {
+                    float factor = expf(direction * m_zoomSpeed * deltaTime);
+                    ZoomAt(m_width/2.0f, m_height/2.0f, factor);
+                }
+            }
+        }
+
+        void ZoomAt(float mouseX, float mouseY, float factor) {
             float oldTileSize = (m_height / N) * zoom;
-        
             float worldX = panX + (mouseX - Otstup) / oldTileSize;
             float worldY = panY + mouseY / oldTileSize;
         
-            float wheel = event.wheel.y;
-            float zoomSpeed = 0.1f;
-            zoom *= (1.0f + wheel * zoomSpeed);
-        
-            const float minZoom = 1.0f;
-            const float maxZoom = (N/256.0f)*25.0f;
-            if (zoom < minZoom) zoom = minZoom;
-            if (zoom > maxZoom) zoom = maxZoom;
+            zoom *= factor;
+            if (zoom < m_minZoom) zoom = m_minZoom;
+            if (zoom > m_maxZoom) zoom = m_maxZoom;
         
             float newTileSize = (m_height / N) * zoom;
-        
             panX = worldX - (mouseX - Otstup) / newTileSize;
             panY = worldY - mouseY / newTileSize;
         
@@ -671,14 +717,7 @@ class Game{
             if (panX < 0) panX += N;
             panY = fmod(panY, (float)N);
             if (panY < 0) panY += N;
-            if (isDragging) {
-                startPanX = panX;
-                startPanY = panY;
-                startMouseX = static_cast<int>(mouseX);
-                startMouseY = static_cast<int>(mouseY);
-            }
         }
-    }
 
         struct Tile{
             uint16_t x,y;
@@ -716,6 +755,12 @@ class Game{
         int startMouseX = 0, startMouseY = 0;
         uint8_t* m_state;
         static constexpr float TEX_SIZE = 4096.0f;
+        bool m_leftPressed = false, m_rightPressed = false, m_upPressed = false, m_downPressed = false;
+        bool m_zoomInPressed = false;
+        bool m_zoomOutPressed = false;
+        float m_minZoom = 1.0f;
+        float m_maxZoom = (N/256.0f)*25.0f;
+        const float m_zoomSpeed = 2.0f;
 
         void CreateMapTexture() {
             if (!m_atlasSurface) return;

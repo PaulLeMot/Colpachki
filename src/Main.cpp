@@ -407,6 +407,7 @@ int main(int argc, char *argv[]){
                 case 1: GMenu.HandleEvent(event);
                         break;
                 case 2: GMenu.m_game->HandleEvent(event);
+                        break;
             }
         }
         if (State != prevState) {
@@ -415,12 +416,16 @@ int main(int argc, char *argv[]){
             }
             prevState = State;
         }
+        if (State == 2) {
+            GMenu.m_game->Update(deltaTime);
+        }
         switch(State){
             case 0: MMenu.Render();
                     break;
             case 1: GMenu.Render();
                     break;
             case 2: GMenu.m_game->Render();
+                    break;
         }
         SDL_RenderPresent(renderer);
         SDL_Delay(20);
