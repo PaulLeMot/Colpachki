@@ -44,6 +44,9 @@ class Game{
                 CreateMap();
                 SmoothClimate(2+(N/256));
                 ApplyCoastalInfluence(1);
+                GenerateForest();
+                GenerateMountains();
+                AdjustMountainZones();
                 InitButtons();
                 m_buttonsObjects.emplace_back(
                     m_renderer,m_font,m_buttons[0],
@@ -219,8 +222,10 @@ class Game{
 
                     Map[i * N + j] = {static_cast<uint16_t>(i), static_cast<uint16_t>(j), 
                     static_cast<uint8_t>(biome), static_cast<int8_t>(zone)};
+                    Map[i * N + j].mountain = false;
                 }
             }
+            m_perm = p;
         }
 
         void SmoothClimate(int iterations) {
@@ -333,6 +338,172 @@ class Game{
                 std::swap(Map, newMap);
             }
         }
+        void GenerateForest() {
+            if (m_perm.empty()) return;
+
+            auto fade = [](float t) { return t * t * t * (t * (t * 6 - 15) + 10); };
+            auto lerp = [](float a, float b, float t) { return a + t * (b - a); };
+            auto grad = [](int hash, float x, float y) {
+                int h = hash & 15;
+                float u = h < 8 ? x : y;
+                float v = h < 4 ? y : (h == 12 || h == 14 ? x : 0);
+                return ((h & 1) == 0 ? u : -u) + ((h & 2) == 0 ? v : -v);
+            };
+
+            auto noise = [&](float x, float y) {
+                int X = (int)std::floor(x) & 255;
+                int Y = (int)std::floor(y) & 255;
+                x -= std::floor(x);
+                y -= std::floor(y);
+                float u = fade(x);
+                float v = fade(y);
+                int aa = m_perm[m_perm[X] + Y];
+                int ab = m_perm[m_perm[X] + Y + 1];
+                int ba = m_perm[m_perm[X + 1] + Y];
+                int bb = m_perm[m_perm[X + 1] + Y + 1];
+                float g1 = grad(aa, x, y);
+                float g2 = grad(ba, x - 1, y);
+                float g3 = grad(ab, x, y - 1);
+                float g4 = grad(bb, x - 1, y - 1);
+                float x1 = lerp(g1, g2, u);
+                float x2 = lerp(g3, g4, u);
+                return lerp(x1, x2, v);
+            };
+
+            const float scale = 0.2f;
+            const float offset = 1000.0f;
+
+            std::vector<float> forestNoise(N * N);
+            for (int i = 0; i < N; ++i) {
+                for (int j = 0; j < N; ++j) {
+                    float x = (i + offset) * scale;
+                    float y = (j + offset) * scale;
+                    float val = noise(x, y);
+                    forestNoise[i * N + j] = (val + 1.0f) / 2.0f;
+                }
+            }
+
+            for (auto& tile : Map) {
+                tile.forest = false;
+            }
+
+            std::vector<int> group1 = {0,1,2,3};
+            int group2 = 4;
+            int group3 = 5;
+
+            auto processGroup = [&](const std::vector<int>& zones, float targetPercent) {
+                std::vector<float> values;
+                std::vector<int> indices;
+                for (int idx = 0; idx < N * N; ++idx) {
+                    const Tile& tile = Map[idx];
+                    if (tile.biome == 0) {
+                        for (int z : zones) {
+                            if (tile.zone == z) {
+                                values.push_back(forestNoise[idx]);
+                                indices.push_back(idx);
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (values.empty()) return;
+
+                std::sort(values.begin(), values.end());
+                size_t thresholdIndex = static_cast<size_t>(values.size() * (1.0f - targetPercent));
+                float threshold = values[thresholdIndex];
+
+                for (size_t k = 0; k < indices.size(); ++k) {
+                    int idx = indices[k];
+                    if (forestNoise[idx] > threshold) {
+                        Map[idx].forest = true;
+                    }
+                }
+            };
+
+            processGroup(group1, 0.4f);
+            processGroup({group2}, 0.1f);
+            processGroup({group3}, 0.7f);
+        }
+        void GenerateMountains() {
+            if (m_perm.empty()) return;
+
+            const int numPoints = 160;
+            std::mt19937 rng(Seed);
+            std::uniform_real_distribution<float> dist(0.0f, N);
+
+            struct Point { float x, y; };
+            std::vector<Point> points;
+            for (int k = 0; k < numPoints; ++k) {
+                points.push_back({dist(rng), dist(rng)});
+            }
+
+            const float thresholdRatio = 0.96f;
+
+            for (int i = 0; i < N; ++i) {
+                for (int j = 0; j < N; ++j) {
+                    Tile& tile = Map[i * N + j];
+                    if (tile.biome != 0) continue;
+
+                    float px = i + 0.5f;
+                    float py = j + 0.5f;
+
+                    float best1 = std::numeric_limits<float>::max();
+                    float best2 = std::numeric_limits<float>::max();
+
+                    for (const auto& pt : points) {
+                        float dx = px - pt.x;
+                        float dy = py - pt.y;
+                        float dist2 = dx*dx + dy*dy;
+                        if (dist2 < best1) {
+                            best2 = best1;
+                            best1 = dist2;
+                        } else if (dist2 < best2) {
+                            best2 = dist2;
+                        }
+                    }
+
+                    if (best2 > 0 && (best1 / best2) > thresholdRatio) {
+                        tile.mountain = true;
+                        if (tile.forest) tile.forest = false;
+                    } else {
+                        tile.mountain = false;
+                    }
+                }
+            }
+        }
+        void AdjustMountainZones() {
+            std::vector<Tile> newMap = Map;
+            for (int i = 0; i < N; ++i) {
+                for (int j = 0; j < N; ++j) {
+                    Tile& tile = newMap[i * N + j];
+                    if (!tile.mountain) continue;
+
+                    bool allMountain = true;
+
+                    int ni = (i - 1 + N) % N;
+                    int nj = j;
+                    if (!Map[ni * N + nj].mountain) allMountain = false;
+
+                    ni = (i + 1) % N;
+                    if (!Map[ni * N + nj].mountain) allMountain = false;
+
+                    ni = i;
+                    nj = (j - 1 + N) % N;
+                    if (!Map[ni * N + nj].mountain) allMountain = false;
+
+                    nj = (j + 1) % N;
+                    if (!Map[ni * N + nj].mountain) allMountain = false;
+
+                    if (allMountain && tile.zone > 0 && tile.zone!=5) {
+                        tile.zone -= 1;
+                    }
+                    if (allMountain && tile.zone==5) {
+                        tile.zone -= 2;
+                    }
+                }
+            }
+            Map = std::move(newMap);
+        }
         void HandleTileClick(int mouseX, int mouseY) {
             if (mouseX >= Otstup && mouseX <= Otstup + m_height && mouseY >= 0 && mouseY <= m_height) {
                 float tileSize = (m_height / N) * zoom;
@@ -429,6 +600,8 @@ class Game{
             uint16_t x,y;
             uint8_t biome;
             int8_t zone;
+            bool forest;
+            bool mountain;
         };
         
         void InitButtons(){
@@ -444,6 +617,7 @@ class Game{
         std::string Name;
         const uint64_t Seed;
         std::vector<Tile>Map{};
+        std::vector<int> m_perm;
         const uint16_t N = 256;
         int Otstup=(m_width-m_height)/2;
         std::vector<std::string>m_buttons;
@@ -488,6 +662,11 @@ class Game{
 
                     int srcX0 = 0;
                     int srcY0 = tileType * atlasTileSize;
+                    if (tile.mountain) {
+                        srcX0 = 1 * atlasTileSize;
+                    } else if (tile.forest) {
+                        srcX0 = 2 * atlasTileSize;
+                    }
 
                     int dstX0 = static_cast<int>(j * baseTileSize);
                     int dstY0 = static_cast<int>(i * baseTileSize);
