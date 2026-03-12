@@ -13,6 +13,7 @@
 #include<vector>
 #include<ctime>
 #include "ColpEngine.hpp"
+#include "Settings.hpp"
 #include <random>
 #include <algorithm>
 
@@ -21,11 +22,13 @@ class Game{
         Game(SDL_Renderer* renderer, TTF_Font* font, 
             const float width, const float height, 
             const std::string Name, const int64_t Seed,
-            uint8_t* StatePtr) : 
+            uint8_t* StatePtr,
+            SettingsMenu* settingsMenu) : 
             m_renderer(renderer), m_font(font),
             m_width(width), m_height(height), 
             Name(Name), Seed(Seed), m_state(StatePtr),
-            m_mapTexture(nullptr){
+            m_mapTexture(nullptr),
+            m_settingsMenu(settingsMenu){
                 Otstup = (m_width - m_height) / 2;
                 srand(time(0));
                 m_atlasSurface = IMG_Load("../atlas.png");
@@ -102,6 +105,11 @@ class Game{
             SDL_SetRenderClipRect(m_renderer, nullptr);
 
             m_buttonsObjects[0].RenderButton();
+            if (m_menuOpen) {
+                for (auto& btn : m_menuButtons) {
+                    btn.RenderButton();
+                }
+            }
         }
 /*       void RenderBuildings() {
             float tileSize = (m_height / N) * zoom;
@@ -606,19 +614,30 @@ class Game{
             if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
                 int mouseX = static_cast<int>(event.button.x);
                 int mouseY = static_cast<int>(event.button.y);
+
                 if (m_buttonsObjects[0].GetButtonAt(mouseX, mouseY)) {
-                    if(m_state)*m_state=1;
+                    m_menuOpen = !m_menuOpen;
                     return;
                 }
-            }
-            if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.button == SDL_BUTTON_LEFT) {
-                int mouseX = static_cast<int>(event.button.x);
-                int mouseY = static_cast<int>(event.button.y);
-                if (m_buttonsObjects[0].GetButtonAt(mouseX, mouseY)) {
-                    if(m_state) *m_state = 1;
-                    return;
+
+                if (m_menuOpen) {
+                    if (m_menuButtons[0].GetButtonAt(mouseX, mouseY)) {
+                        if (m_state) *m_state = 0;
+                        m_menuOpen = false;
+                        return;
+                    }
+                    if (m_menuButtons[1].GetButtonAt(mouseX, mouseY)) {
+                        if (m_settingsMenu) {
+                            m_settingsMenu->SetReturnState(2);
+                            *m_state = 3;
+                        }
+                        m_menuOpen = false;
+                        return;
+                    } else m_menuOpen = 0;
                 }
-                HandleTileClick(mouseX, mouseY);
+                if (event.button.button == SDL_BUTTON_LEFT) {
+                    HandleTileClick(mouseX, mouseY);
+                }
             }
         if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.button == SDL_BUTTON_MIDDLE) {
             isDragging = true;
@@ -647,8 +666,8 @@ class Game{
         if (event.type == SDL_EVENT_MOUSE_WHEEL) {
             float mouseX, mouseY;
             SDL_GetMouseState(&mouseX, &mouseY);
-            const float step = 0.05f;
-            float factor = 1.0f + event.wheel.y * step;
+            float sens = m_settingsMenu ? m_settingsMenu->GetZoomSensitivity() : 1.0f;
+            float factor = expf(event.wheel.y * m_wheelZoomSpeed * sens);
             if (factor < 0.1f) factor = 0.1f;
             ZoomAt(mouseX, mouseY, factor);
         }
@@ -694,7 +713,8 @@ class Game{
                 if (m_zoomInPressed) direction += 1.0f;
                 if (m_zoomOutPressed) direction -= 1.0f;
                 if (direction != 0.0f) {
-                    float factor = expf(direction * m_zoomSpeed * deltaTime);
+                    float sens = m_settingsMenu ? m_settingsMenu->GetZoomSensitivity() : 1.0f;
+                    float factor = expf(direction * m_keyZoomSpeed * sens * deltaTime);
                     ZoomAt(m_width/2.0f, m_height/2.0f, factor);
                 }
             }
@@ -730,6 +750,20 @@ class Game{
         
         void InitButtons(){
             m_buttons={"..."};
+            float btnX = m_width - m_width/10;
+            float btnY = 0;
+            float btnW = m_width/10;
+            float btnH = m_width/10;
+            m_menuButtons.emplace_back(
+                m_renderer, m_font, "Exit", m_width, m_height,
+                btnX, btnY + btnH, btnW, btnH,
+                210, 210, 210
+            );
+            m_menuButtons.emplace_back(
+                m_renderer, m_font, "Settings", m_width, m_height,
+                btnX, btnY + 2*btnH, btnW, btnH,
+                210, 210, 210
+            );
         }
     
         private:
@@ -760,7 +794,11 @@ class Game{
         bool m_zoomOutPressed = false;
         float m_minZoom = 1.0f;
         float m_maxZoom = (N/256.0f)*25.0f;
-        const float m_zoomSpeed = 2.0f;
+        const float m_keyZoomSpeed = 2.0f;
+        const float m_wheelZoomSpeed = 0.1f;
+        bool m_menuOpen = false;
+        std::vector<Button> m_menuButtons;
+        SettingsMenu* m_settingsMenu;
 
         void CreateMapTexture() {
             if (!m_atlasSurface) return;

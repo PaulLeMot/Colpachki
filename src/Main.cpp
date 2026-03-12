@@ -13,11 +13,20 @@
 #include "../include/ColpEngine.hpp"
 #include "../include/GameClass.hpp"
 #include "../include/GameManager.hpp"
+#include "../include/Settings.hpp"
 uint8_t State{0};
 std::vector<uint16_t> btnRGB{210,210,210};
 class MainMenu {
     public:
-    MainMenu(SDL_Renderer* renderer, TTF_Font* font, const float width, const float height) : m_renderer(renderer), m_font(font), m_width(width), m_height(height){
+    MainMenu(
+        SDL_Renderer* renderer, TTF_Font* font,
+        const float width, const float height,
+        SettingsMenu* settingsMenu
+        ) : 
+        m_renderer(renderer), m_font(font),
+        m_width(width), m_height(height),
+        m_settingsMenu(settingsMenu)
+        {
         InitButtons();
         for (uint8_t i = 0; i < m_buttons.size(); ++i) {
             m_buttonsObjects.emplace_back(
@@ -47,7 +56,8 @@ class MainMenu {
                 State = 1;
             }
             else if (m_buttonsObjects[1].GetButtonAt(mouseX, mouseY)) {
-
+                m_settingsMenu->SetReturnState(0);
+                State = 3;
             }
             else if (m_buttonsObjects[2].GetButtonAt(mouseX, mouseY)) {
                 SDL_Event quitEvent;
@@ -62,6 +72,7 @@ class MainMenu {
     TTF_Font* m_font;
     const float m_width, m_height;
     std::vector<Button> m_buttonsObjects;
+    SettingsMenu* m_settingsMenu;
     void InitButtons() {
         m_buttons = {
             "Play", "Options", "Exit"
@@ -95,10 +106,15 @@ class MainMenu {
 
 class NewGameMenu {
     public:
-    NewGameMenu(SDL_Renderer* renderer, TTF_Font* font,
-        const float width, const float height, uint8_t* StatePtr) : 
+    NewGameMenu(
+        SDL_Renderer* renderer, TTF_Font* font,
+        const float width, const float height,
+        uint8_t* StatePtr, SettingsMenu* settingsMenu
+        ) : 
         m_renderer(renderer), m_font(font), 
-        m_width(width), m_height(height), m_state(StatePtr), m_gameLoader(Current){
+        m_width(width), m_height(height), m_state(StatePtr),
+        m_gameLoader(Current),m_settingsMenu(settingsMenu)
+        {
         InitObjects();
         CountSaves = m_gameLoader.CountSaves();
         if(CountSaves>0){
@@ -180,7 +196,11 @@ class NewGameMenu {
                 m_gameLoader.GetSaves(SaveNames);
                 UpdateSaveButtons();
                 State = 2;
-                m_game.emplace(m_renderer, m_font, m_width, m_height, NewSave.Name, NewSave.Seed, m_state);
+                m_game.emplace(
+                    m_renderer, m_font,
+                    m_width, m_height,
+                    NewSave.Name, NewSave.Seed,
+                    m_state, m_settingsMenu);
             }
             else if (m_buttonsObjects.size() > 2 && m_buttonsObjects[2].GetButtonAt(mouseX, mouseY)) {
                 if (Current > 0) Current--;
@@ -218,7 +238,11 @@ class NewGameMenu {
                     GameLoader::GameData data;
                     if (m_gameLoader.LoadGameData(SaveNames[i], data)) {
                         State = 2;
-                        m_game.emplace(m_renderer, m_font, m_width, m_height, data.name, data.seed, m_state);
+                        m_game.emplace(
+                            m_renderer, m_font,
+                            m_width, m_height,
+                            data.name, data.seed, m_state,
+                            m_settingsMenu);
                     }
                     return;
                 }
@@ -246,6 +270,7 @@ class NewGameMenu {
     uint16_t CountSaves{0};
     std::vector<std::string>SaveNames{};
     GameLoader m_gameLoader;
+    SettingsMenu* m_settingsMenu;
     void InitObjects() {
         m_buttons = {
             "Back", "Play"
@@ -386,8 +411,9 @@ int main(int argc, char *argv[]){
         SDL_Quit();
         return -1;
     }
-    MainMenu MMenu(renderer, font, width, height);
-    NewGameMenu GMenu(renderer, font, width,height, &State);
+    SettingsMenu SOptions(renderer, font, width, height, &State);
+    MainMenu MMenu(renderer, font, width, height, &SOptions);
+    NewGameMenu GMenu(renderer, font, width, height, &State, &SOptions);
     bool d = 0;
     uint8_t prevState = 0;
     Uint32 lastTime = SDL_GetTicks();
@@ -408,6 +434,8 @@ int main(int argc, char *argv[]){
                         break;
                 case 2: GMenu.m_game->HandleEvent(event);
                         break;
+                case 3: SOptions.HandleEvent(event); 
+                        break;
             }
         }
         if (State != prevState) {
@@ -425,6 +453,8 @@ int main(int argc, char *argv[]){
             case 1: GMenu.Render();
                     break;
             case 2: GMenu.m_game->Render();
+                    break;
+            case 3: SOptions.Render();
                     break;
         }
         SDL_RenderPresent(renderer);

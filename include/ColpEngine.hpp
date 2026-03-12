@@ -313,7 +313,12 @@ public:
         SDL_FRect bgRect = {m_x, m_y, m_w, m_h};
         SDL_RenderFillRect(m_renderer, &bgRect);
         if (m_textTexture) {
-            SDL_RenderTexture(m_renderer, m_textTexture, nullptr, &bgRect);
+            float tw, th;
+            SDL_GetTextureSize(m_textTexture, &tw, &th);
+            float tx = bgRect.x + (bgRect.w - tw) / 2.0f;
+            float ty = bgRect.y + (bgRect.h - th) / 2.0f;
+            SDL_FRect textRect = {tx, ty, tw, th};
+            SDL_RenderTexture(m_renderer, m_textTexture, nullptr, &textRect);
         }
     }
     void SetText(const std::string& newText) {
