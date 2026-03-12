@@ -12,6 +12,7 @@
 #include <string>
 #include<vector>
 #include<ctime>
+#include <queue>
 #include "ColpEngine.hpp"
 #include "Settings.hpp"
 #include <random>
@@ -28,9 +29,9 @@ class Game{
             m_width(width), m_height(height), 
             Name(Name), Seed(Seed), m_state(StatePtr),
             m_mapTexture(nullptr),
-            m_settingsMenu(settingsMenu){
+            m_settingsMenu(settingsMenu),
+            m_rng(Seed){
                 Otstup = (m_width - m_height) / 2;
-                srand(time(0));
                 m_atlasSurface = IMG_Load("../atlas.png");
                 if (!m_atlasSurface) {
                     SDL_Log("Failed to load atlas.png: %s", SDL_GetError());
@@ -51,6 +52,7 @@ class Game{
                 GenerateMountains();
                 AdjustMountainZones();
                 GenerateCapitals();
+                GenerateRivers();
                 InitButtons();
                 m_buttonsObjects.emplace_back(
                     m_renderer,m_font,m_buttons[0],
@@ -148,10 +150,10 @@ class Game{
             }
         }*/
         void CreateMap() {
-            std::mt19937 rng(Seed);
+            //std::mt19937 rng(Seed);
             std::vector<int> permutation(256);
             for (int i = 0; i < 256; ++i) permutation[i] = i;
-            std::shuffle(permutation.begin(), permutation.end(), rng);
+            std::shuffle(permutation.begin(), permutation.end(), m_rng);
 
             std::vector<int> p(512);
             for (int i = 0; i < 512; ++i) p[i] = permutation[i % 256];
@@ -235,7 +237,16 @@ class Game{
                     rawValues[i * N + j] = raw;
                 }
             }
-
+            float minVal = rawValues[0], maxVal = rawValues[0];
+            for (float v : rawValues) {
+                if (v < minVal) minVal = v;
+                if (v > maxVal) maxVal = v;
+            }
+            for (float& v : rawValues) {
+                v = (v - minVal) / (maxVal - minVal);
+            }
+            m_heightMap = rawValues;
+            m_heightMap = rawValues;
             std::vector<float> sorted = rawValues;
             std::sort(sorted.begin(), sorted.end());
             size_t thresholdIndex = static_cast<size_t>(sorted.size() * 0.33f);
@@ -268,7 +279,8 @@ class Game{
                         for (int b = 0; b < 5; ++b) {
                             if (p >= borders[b] - blend_width && p <= borders[b] + blend_width) {
                                 float t = (p - (borders[b] - blend_width)) / (2.0f * blend_width);
-                                float rnd = (float)rand() / RAND_MAX;
+                                std::uniform_real_distribution<float> dis(0.0f, 1.0f);
+                                float rnd = dis(m_rng);
                                 selected_zone = (rnd < t) ? b + 1 : b;
                                 break;
                             }
@@ -372,7 +384,8 @@ class Game{
 
                         if (tile.zone == 4) {
                             if (base_zone >= 4 && (waterNear || tropicalNear)) {
-                                if (rand() % 100 < 80) {
+                                std::uniform_int_distribution<int> dis(0, 99);
+                                if (dis(m_rng) < 80) {
                                     newZone = 5;
                                 }
                             }
@@ -483,13 +496,13 @@ class Game{
             if (m_perm.empty()) return;
 
             const int numPoints = 160;
-            std::mt19937 rng(Seed);
+            //std::mt19937 rng(Seed);
             std::uniform_real_distribution<float> dist(0.0f, N);
 
             struct Point { float x, y; };
             std::vector<Point> points;
             for (int k = 0; k < numPoints; ++k) {
-                points.push_back({dist(rng), dist(rng)});
+                points.push_back({dist(m_rng), dist(m_rng)});
             }
 
             const float thresholdRatio = 0.96f;
@@ -563,7 +576,7 @@ class Game{
             const int targetCount = 100;
             const float minDist = 10.0f;
             std::vector<std::pair<int,int>> positions;
-            std::mt19937 rng(Seed);
+            //std::mt19937 rng(Seed);
             std::uniform_int_distribution<int> dist(0, N-1);
 
             auto distance = [&](int x1, int y1, int x2, int y2) {
@@ -577,8 +590,8 @@ class Game{
             int attempts = 0;
             const int maxAttempts = 10000;
             while (positions.size() < targetCount && attempts < maxAttempts) {
-                int x = dist(rng);
-                int y = dist(rng);
+                int x = dist(m_rng);
+                int y = dist(m_rng);
                 int idx = y * N + x;
                 if (Map[idx].biome != 0) continue;
 
@@ -594,6 +607,176 @@ class Game{
                     Map[idx].buildingLevel = 3;
                 }
                 attempts++;
+            }
+        }
+        void GenerateRivers() {
+            const int maxSteps = 2000;
+            const int minLandNeighbors = 2;
+            //std::mt19937 rng(Seed);
+
+            struct RiverGroup { int count; int minDist; int maxDist; };
+            std::vector<RiverGroup> groups = {
+                {50, 13, 30},
+                {50, 15, 30},
+                {200, 8, 20},
+                {150, 2, 8}
+            };
+
+            auto nodeHeight = [&](int nodeX, int nodeY) -> float {
+                float sum = 0.0f;
+                int count = 0;
+                for (int dx = -1; dx <= 0; ++dx) {
+                    for (int dy = -1; dy <= 0; ++dy) {
+                        int tx = nodeX + dx;
+                        int ty = nodeY + dy;
+                        if (tx >= 0 && tx < N && ty >= 0 && ty < N) {
+                            sum += m_heightMap[ty * N + tx];
+                            count++;
+                        }
+                    }
+                }
+                return (count == 0) ? 0.0f : sum / count;
+            };
+
+            std::vector<int> distToWater(N * N, -1);
+            std::queue<std::pair<int,int>> q;
+            for (int i = 0; i < N; ++i) {
+                for (int j = 0; j < N; ++j) {
+                    if (Map[i * N + j].biome == 1) {
+                        distToWater[i * N + j] = 0;
+                        q.push({i, j});
+                    }
+                }
+            }
+            int dirs[4][2] = {{-1,0},{1,0},{0,-1},{0,1}};
+            while (!q.empty()) {
+                auto [y, x] = q.front(); q.pop();
+                int curDist = distToWater[y * N + x];
+                for (auto& d : dirs) {
+                    int ny = y + d[0];
+                    int nx = x + d[1];
+                    if (ny >= 0 && ny < N && nx >= 0 && nx < N && distToWater[ny * N + nx] == -1) {
+                        distToWater[ny * N + nx] = curDist + 1;
+                        q.push({ny, nx});
+                    }
+                }
+            }
+
+            m_riverSegments.clear();
+            std::vector<std::vector<bool>> nodeUsed(N+1, std::vector<bool>(N+1, false));
+
+            std::uniform_int_distribution<int> dist(0, N-1);
+
+            for (const auto& group : groups) {
+                int riversCreatedInGroup = 0;
+                int attempts = 0;
+                const int maxAttempts = group.count * 1000;
+
+                while (riversCreatedInGroup < group.count && attempts < maxAttempts) {
+                    attempts++;
+                    int tx = dist(m_rng);
+                    int ty = dist(m_rng);
+
+                    if (Map[ty * N + tx].biome != 0) continue;
+                    if (Map[ty * N + tx].zone == 4) continue;
+
+                    int landNeighbors = 0;
+                    if (ty > 0 && Map[(ty - 1) * N + tx].biome == 0) landNeighbors++;
+                    if (ty < N - 1 && Map[(ty + 1) * N + tx].biome == 0) landNeighbors++;
+                    if (tx > 0 && Map[ty * N + (tx - 1)].biome == 0) landNeighbors++;
+                    if (tx < N - 1 && Map[ty * N + (tx + 1)].biome == 0) landNeighbors++;
+
+                    if (landNeighbors < minLandNeighbors) continue;
+
+                    int d = distToWater[ty * N + tx];
+                    if (d < group.minDist || d > group.maxDist) continue;
+
+                    bool tooClose = false;
+                    for (int dy = -2; dy <= 2 && !tooClose; ++dy) {
+                        for (int dx = -2; dx <= 2; ++dx) {
+                            int ny = ty + dy;
+                            int nx = tx + dx;
+                            if (ny >= 0 && ny <= N && nx >= 0 && nx <= N && nodeUsed[ny][nx]) {
+                                tooClose = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (tooClose) continue;
+
+                    int curX = tx, curY = ty;
+                    std::vector<std::pair<SDL_Point, SDL_Point>> segments;
+                    bool reachedWater = false;
+                    int steps = 0;
+
+                    while (steps < maxSteps) {
+                        std::vector<int> dirs;
+                        if (curY > 0) dirs.push_back(0);
+                        if (curY < N) dirs.push_back(1);
+                        if (curX > 0) dirs.push_back(2);
+                        if (curX < N) dirs.push_back(3);
+
+                        float curH = nodeHeight(curX, curY);
+                        float bestH = curH;
+                        int bestDir = -1;
+
+                        for (int d : dirs) {
+                            int nx = curX, ny = curY;
+                            if (d == 0) ny--;
+                            else if (d == 1) ny++;
+                            else if (d == 2) nx--;
+                            else if (d == 3) nx++;
+
+                            float nh = nodeHeight(nx, ny);
+                            if (nh > bestH) {
+                                bestH = nh;
+                                bestDir = d;
+                            }
+                        }
+
+                        if (bestDir == -1) break;
+
+                        int nx = curX, ny = curY;
+                        if (bestDir == 0) ny--;
+                        else if (bestDir == 1) ny++;
+                        else if (bestDir == 2) nx--;
+                        else if (bestDir == 3) nx++;
+
+                        segments.emplace_back(SDL_Point{curX, curY}, SDL_Point{nx, ny});
+
+                        bool waterFound = false;
+                        for (int dx = -1; dx <= 0 && !waterFound; ++dx) {
+                            for (int dy = -1; dy <= 0; ++dy) {
+                                int wx = nx + dx;
+                                int wy = ny + dy;
+                                if (wx >= 0 && wx < N && wy >= 0 && wy < N) {
+                                    if (Map[wy * N + wx].biome == 1) {
+                                        waterFound = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
+                        if (waterFound) {
+                            reachedWater = true;
+                            break;
+                        }
+
+                        curX = nx;
+                        curY = ny;
+                        steps++;
+                    }
+
+                    if (reachedWater && !segments.empty()) {
+                        m_riverSegments.insert(m_riverSegments.end(), segments.begin(), segments.end());
+                        for (const auto& seg : segments) {
+                            nodeUsed[seg.first.y][seg.first.x] = true;
+                            nodeUsed[seg.second.y][seg.second.x] = true;
+                        }
+                        riversCreatedInGroup++;
+                    }
+                }
             }
         }
         void HandleTileClick(int mouseX, int mouseY) {
@@ -799,6 +982,9 @@ class Game{
         bool m_menuOpen = false;
         std::vector<Button> m_menuButtons;
         SettingsMenu* m_settingsMenu;
+        std::vector<float> m_heightMap;
+        std::vector<std::pair<SDL_Point, SDL_Point>> m_riverSegments;
+        std::mt19937 m_rng;
 
         void CreateMapTexture() {
             if (!m_atlasSurface) return;
@@ -840,7 +1026,63 @@ class Game{
                             dstPixels[(dstY0 + y) * dstPitch + (dstX0 + x)] = srcPixel;
                         }
                     }
+                }
+            }
+
+const SDL_PixelFormatDetails* dstFormat = SDL_GetPixelFormatDetails(surface->format);
+
+if (!m_riverSegments.empty()) {
+    Uint32 riverColor = SDL_MapRGBA(dstFormat, nullptr, 0, 0, 100, 255);
+
+    float thickness = std::max(1.0f, baseTileSize / 6.0f);
+    int texSizeI = static_cast<int>(TEX_SIZE);
+
+    for (const auto& seg : m_riverSegments) {
+        SDL_Point p1 = seg.first;
+        SDL_Point p2 = seg.second;
+
+        if (p1.x < 0 || p1.x > N || p1.y < 0 || p1.y > N ||
+            p2.x < 0 || p2.x > N || p2.y < 0 || p2.y > N) continue;
+
+        float x1 = p1.x * baseTileSize;
+        float y1 = p1.y * baseTileSize;
+        float x2 = p2.x * baseTileSize;
+        float y2 = p2.y * baseTileSize;
+
+        if (p1.x == p2.x) {
+            float rectX = x1 - thickness * 0.3f;
+            float rectY = std::min(y1, y2);
+            int startX = std::max(0, (int)std::floor(rectX));
+            int endX   = std::min(texSizeI, (int)std::ceil(rectX + thickness));
+            int startY = std::max(0, (int)std::floor(rectY));
+            int endY   = std::min(texSizeI, (int)std::ceil(rectY + baseTileSize));
+            for (int py = startY; py < endY; ++py) {
+                for (int px = startX; px < endX; ++px) {
+                    dstPixels[py * dstPitch + px] = riverColor;
+                }
+            }
+        } else {
+            float rectX = std::min(x1, x2);
+            float rectY = y1 - thickness * 0.3f;
+            int startX = std::max(0, (int)std::floor(rectX));
+            int endX   = std::min(texSizeI, (int)std::ceil(rectX + baseTileSize));
+            int startY = std::max(0, (int)std::floor(rectY));
+            int endY   = std::min(texSizeI, (int)std::ceil(rectY + thickness));
+            for (int py = startY; py < endY; ++py) {
+                for (int px = startX; px < endX; ++px) {
+                    dstPixels[py * dstPitch + px] = riverColor;
+                }
+            }
+        }
+    }
+}
+
+            for (int i = 0; i < N; ++i) {
+                for (int j = 0; j < N; ++j) {
+                    const Tile& tile = Map[i * N + j];
                     if (tile.buildingLevel > 0) {
+                        int dstX0 = static_cast<int>(j * baseTileSize);
+                        int dstY0 = static_cast<int>(i * baseTileSize);
                         int buildingSrcX0 = (2 + tile.buildingLevel) * atlasTileSize;
                         int buildingSrcY0 = (tile.zone >= 0) ? tile.zone * atlasTileSize : 0;
 
@@ -848,7 +1090,6 @@ class Game{
                             for (int x = 0; x < atlasTileSize; ++x) {
                                 Uint32 srcPixel = srcPixels[(buildingSrcY0 + y) * srcPitch + (buildingSrcX0 + x)];
                                 Uint32& dstPixel = dstPixels[(dstY0 + y) * dstPitch + (dstX0 + x)];
-
                                 Uint8 alpha = (srcPixel >> 24) & 0xFF;
                                 if (alpha > 0) {
                                     dstPixel = srcPixel;
@@ -861,7 +1102,6 @@ class Game{
 
             m_mapTexture = SDL_CreateTextureFromSurface(m_renderer, surface);
             SDL_DestroySurface(surface);
-
             if (m_mapTexture) {
                 SDL_SetTextureScaleMode(m_mapTexture, SDL_SCALEMODE_PIXELART);
             }
