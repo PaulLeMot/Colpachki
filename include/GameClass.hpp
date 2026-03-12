@@ -58,7 +58,7 @@ class Game{
                 AdjustMountainZones();
                 RemoveIsolatedMountains();
                 GenerateForest();
-                GenerateRivers();
+                //GenerateRivers();
                 InitButtons();
                 m_buttonsObjects.emplace_back(
                     m_renderer,m_font,m_buttons[0],
@@ -627,94 +627,84 @@ class Game{
                 attempts++;
             }
         }
-    void GenerateRivers() {
-        const int maxSteps = 2000;
-        const int minLandNeighbors = 2;
+        void GenerateRivers() {
+            const int maxSteps = 150;
+            const int minLandNeighbors = 2;
 
-        struct RiverGroup { int count; int minDist; int maxDist; };
-        std::vector<RiverGroup> groups = {
-            {50, 13, 100},
-            {70, 15, 100},
-            {250, 8, 20},
-            {150, 2, 8}
-        };
+            struct RiverGroup { int count; int minDist; int maxDist; };
+            std::vector<RiverGroup> groups = {
+                {150, 8, 20},
+                {150, 2, 8}
+            };
+            std::vector<int> multipliers = {3000, 50};
 
-        auto nodeHeight = [&](int nodeX, int nodeY) -> float {
-            float sum = 0.0f;
-            int count = 0;
-            for (int dx = -1; dx <= 0; ++dx) {
-                for (int dy = -1; dy <= 0; ++dy) {
-                    int tx = nodeX + dx;
-                    int ty = nodeY + dy;
-                    int txw = (tx + N) % N;
-                    int tyw = (ty + N) % N;
-                    sum += m_heightMap[tyw * N + txw];
-                    count++;
+            auto nodeHeight = [&](int nodeX, int nodeY) -> float {
+                float sum = 0.0f;
+                int count = 0;
+                for (int dx = -1; dx <= 0; ++dx) {
+                    for (int dy = -1; dy <= 0; ++dy) {
+                        int tx = nodeX + dx;
+                        int ty = nodeY + dy;
+                        int txw = (tx + N) % N;
+                        int tyw = (ty + N) % N;
+                        sum += m_heightMap[tyw * N + txw];
+                        count++;
+                    }
+                }
+                return (count == 0) ? 0.0f : sum / count;
+            };
+
+            std::vector<int> distToWater(N * N, -1);
+            std::queue<std::pair<int,int>> q;
+            for (int i = 0; i < N; ++i) {
+                for (int j = 0; j < N; ++j) {
+                    if (Map[i * N + j].biome == 1) {
+                        distToWater[i * N + j] = 0;
+                        q.push({i, j});
+                    }
                 }
             }
-            return (count == 0) ? 0.0f : sum / count;
-        };
-        std::vector<int> distToWater(N * N, -1);
-        std::queue<std::pair<int,int>> q;
-        for (int i = 0; i < N; ++i) {
-            for (int j = 0; j < N; ++j) {
-                if (Map[i * N + j].biome == 1) {
-                    distToWater[i * N + j] = 0;
-                    q.push({i, j});
+            int dirs[4][2] = {{-1,0},{1,0},{0,-1},{0,1}};
+            while (!q.empty()) {
+                auto [y, x] = q.front(); q.pop();
+                int curDist = distToWater[y * N + x];
+                for (auto& d : dirs) {
+                    int ny = (y + d[0] + N) % N;
+                    int nx = (x + d[1] + N) % N;
+                    if (distToWater[ny * N + nx] == -1) {
+                        distToWater[ny * N + nx] = curDist + 1;
+                        q.push({ny, nx});
+                    }
                 }
             }
-        }
-        int dirs[4][2] = {{-1,0},{1,0},{0,-1},{0,1}};
-        while (!q.empty()) {
-            auto [y, x] = q.front(); q.pop();
-            int curDist = distToWater[y * N + x];
-            for (auto& d : dirs) {
-                int ny = (y + d[0] + N) % N;
-                int nx = (x + d[1] + N) % N;
-                if (distToWater[ny * N + nx] == -1) {
-                    distToWater[ny * N + nx] = curDist + 1;
-                    q.push({ny, nx});
+
+            m_riverSegments.clear();
+            std::vector<std::vector<bool>> nodeUsed(N+1, std::vector<bool>(N+1, false));
+            std::uniform_int_distribution<int> dist(0, N-1);
+
+            const int bigRiverCount = 10;
+            int bigRiversCreated = 0;
+
+            std::vector<std::pair<int,int>> candidates;
+            for (int i = 0; i < N; ++i) {
+                for (int j = 0; j < N; ++j) {
+                    if (Map[i * N + j].biome != 0) continue;
+                    if (Map[i * N + j].zone == 4) continue;
+                    int d = distToWater[i * N + j];
+                    if (d < 20) continue;
+                    candidates.emplace_back(i, j);
                 }
             }
-        }
+            std::shuffle(candidates.begin(), candidates.end(), m_rng);
 
-        m_riverSegments.clear();
-        std::vector<std::vector<bool>> nodeUsed(N+1, std::vector<bool>(N+1, false));
+            for (const auto& [ty, tx] : candidates) {
+                if (bigRiversCreated >= bigRiverCount) break;
 
-        std::uniform_int_distribution<int> dist(0, N-1);
-
-        for (const auto& group : groups) {
-            int riversCreatedInGroup = 0;
-            int attempts = 0;
-            const int maxAttempts = group.count * 1000;
-
-            while (riversCreatedInGroup < group.count && attempts < maxAttempts) {
-                attempts++;
-                int tx = dist(m_rng);
-                int ty = dist(m_rng);
-
-                if (Map[ty * N + tx].biome != 0) continue;
-                if (Map[ty * N + tx].zone == 4) continue;
-
-                int landNeighbors = 0;
-                if (ty > 0 && Map[(ty - 1) * N + tx].biome == 0) landNeighbors++;
-                if (ty < N - 1 && Map[(ty + 1) * N + tx].biome == 0) landNeighbors++;
-                if (tx > 0 && Map[ty * N + (tx - 1)].biome == 0) landNeighbors++;
-                if (tx < N - 1 && Map[ty * N + (tx + 1)].biome == 0) landNeighbors++;
-
-                if (landNeighbors < minLandNeighbors) continue;
-
-                int d = distToWater[ty * N + tx];
-                if (d < group.minDist || d > group.maxDist) continue;
                 bool tooClose = false;
-                for (int dy = -2; dy <= 2 && !tooClose; ++dy) {
-                    for (int dx = -2; dx <= 2; ++dx) {
-                        int ny = ty + dy;
-                        int nx = tx + dx;
-                        if (ny < 0) ny += N+1;
-                        if (ny > N) ny -= N+1;
-                        if (nx < 0) nx += N+1;
-                        if (nx > N) nx -= N+1;
+                for (int dy = -3; dy <= 3 && !tooClose; ++dy) {
+                    for (int dx = -3; dx <= 3; ++dx) {
+                        int ny = (ty + dy + N+1) % (N+1);
+                        int nx = (tx + dx + N+1) % (N+1);
                         if (nodeUsed[ny][nx]) {
                             tooClose = true;
                             break;
@@ -725,72 +715,229 @@ class Game{
 
                 int curX = tx, curY = ty;
                 std::vector<std::pair<SDL_Point, SDL_Point>> segments;
-                bool reachedWater = false;
-                int steps = 0;
+                bool reachedWaterOrRiver = false;
+                int totalSteps = 0;
+                const int maxTotalSteps = 500;
+                int mainDir = m_rng() % 4;
 
-                while (steps < maxSteps) {
-                    std::vector<int> dirs = {0,1,2,3};
-
-                    float curH = nodeHeight(curX, curY);
-                    float bestH = curH;
-                    int bestDir = -1;
-
-                    for (int d : dirs) {
-                        int nx = curX, ny = curY;
-                        if (d == 0) ny = (curY == 0) ? N : curY-1;
-                        else if (d == 1) ny = (curY == N) ? 0 : curY+1;
-                        else if (d == 2) nx = (curX == 0) ? N : curX-1;
-                        else if (d == 3) nx = (curX == N) ? 0 : curX+1;
-
-                        float nh = nodeHeight(nx, ny);
-                        if (nh > bestH) {
-                            bestH = nh;
-                            bestDir = d;
-                        }
+                auto step = [&](int dir, int& x, int& y) {
+                    int nx = x, ny = y;
+                    switch (dir) {
+                        case 0: ny = (y == 0) ? N : y-1; break;
+                        case 1: ny = (y == N) ? 0 : y+1; break;
+                        case 2: nx = (x == 0) ? N : x-1; break;
+                        case 3: nx = (x == N) ? 0 : x+1; break;
                     }
+                    x = nx;
+                    y = ny;
+                };
 
-                    if (bestDir == -1) break;
+                while (!reachedWaterOrRiver && totalSteps < maxTotalSteps) {
+                    int straightLen = 3 + (m_rng() % 5);
+                    for (int s = 0; s < straightLen; ++s) {
+                        if (totalSteps >= maxTotalSteps) break;
+                        int prevX = curX, prevY = curY;
+                        step(mainDir, curX, curY);
+                        totalSteps++;
 
-                    int nx = curX, ny = curY;
-                    if (bestDir == 0) ny = (curY == 0) ? N : curY-1;
-                    else if (bestDir == 1) ny = (curY == N) ? 0 : curY+1;
-                    else if (bestDir == 2) nx = (curX == 0) ? N : curX-1;
-                    else if (bestDir == 3) nx = (curX == N) ? 0 : curX+1;
+                        if (nodeUsed[curY][curX]) {
+                            segments.emplace_back(SDL_Point{prevX, prevY}, SDL_Point{curX, curY});
+                            reachedWaterOrRiver = true;
+                            break;
+                        }
 
-                    segments.emplace_back(SDL_Point{curX, curY}, SDL_Point{nx, ny});
-                    bool waterFound = false;
-                    for (int dx = -1; dx <= 0 && !waterFound; ++dx) {
-                        for (int dy = -1; dy <= 0; ++dy) {
-                            int wx = (nx + dx + N) % N;
-                            int wy = (ny + dy + N) % N;
-                            if (Map[wy * N + wx].biome == 1) {
-                                waterFound = true;
-                                break;
+                        segments.emplace_back(SDL_Point{prevX, prevY}, SDL_Point{curX, curY});
+
+                        bool waterNow = false;
+                        for (int dx = -1; dx <= 0 && !waterNow; ++dx) {
+                            for (int dy = -1; dy <= 0; ++dy) {
+                                int wx = (curX + dx + N) % N;
+                                int wy = (curY + dy + N) % N;
+                                if (Map[wy * N + wx].biome == 1) {
+                                    waterNow = true;
+                                    break;
+                                }
                             }
                         }
+                        if (waterNow) {
+                            reachedWaterOrRiver = true;
+                            break;
+                        }
                     }
+                    if (reachedWaterOrRiver) break;
 
-                    if (waterFound) {
-                        reachedWater = true;
-                        break;
+                    int sideDir;
+                    if (mainDir == 0 || mainDir == 1) {
+                        sideDir = (m_rng() % 2) ? 2 : 3;
+                    } else {
+                        sideDir = (m_rng() % 2) ? 0 : 1;
                     }
+                    int sideLen = 1 + (m_rng() % 2);
+                    for (int s = 0; s < sideLen; ++s) {
+                        if (totalSteps >= maxTotalSteps) break;
+                        int prevX = curX, prevY = curY;
+                        step(sideDir, curX, curY);
+                        totalSteps++;
 
-                    curX = nx;
-                    curY = ny;
-                    steps++;
+                        if (nodeUsed[curY][curX]) {
+                            segments.emplace_back(SDL_Point{prevX, prevY}, SDL_Point{curX, curY});
+                            reachedWaterOrRiver = true;
+                            break;
+                        }
+
+                        segments.emplace_back(SDL_Point{prevX, prevY}, SDL_Point{curX, curY});
+
+                        bool waterNow = false;
+                        for (int dx = -1; dx <= 0 && !waterNow; ++dx) {
+                            for (int dy = -1; dy <= 0; ++dy) {
+                                int wx = (curX + dx + N) % N;
+                                int wy = (curY + dy + N) % N;
+                                if (Map[wy * N + wx].biome == 1) {
+                                    waterNow = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (waterNow) {
+                            reachedWaterOrRiver = true;
+                            break;
+                        }
+                    }
+                    if (reachedWaterOrRiver) break;
                 }
 
-                if (reachedWater && !segments.empty()) {
+                if (reachedWaterOrRiver && !segments.empty()) {
                     m_riverSegments.insert(m_riverSegments.end(), segments.begin(), segments.end());
                     for (const auto& seg : segments) {
                         nodeUsed[seg.first.y][seg.first.x] = true;
                         nodeUsed[seg.second.y][seg.second.x] = true;
                     }
-                    riversCreatedInGroup++;
+                    bigRiversCreated++;
                 }
             }
+            SDL_Log("Big rivers (snake) created: %d", bigRiversCreated);
+
+            for (size_t g = 0; g < groups.size(); ++g) {
+                const auto& group = groups[g];
+                int riversCreatedInGroup = 0;
+                int attempts = 0;
+                const int maxAttempts = group.count * multipliers[g];
+
+                while (riversCreatedInGroup < group.count && attempts < maxAttempts) {
+                    attempts++;
+                    int tx = dist(m_rng);
+                    int ty = dist(m_rng);
+
+                    if (Map[ty * N + tx].biome != 0) continue;
+                    if (Map[ty * N + tx].zone == 4) continue;
+
+                    int landNeighbors = 0;
+                    if (ty > 0 && Map[(ty - 1) * N + tx].biome == 0) landNeighbors++;
+                    if (ty < N - 1 && Map[(ty + 1) * N + tx].biome == 0) landNeighbors++;
+                    if (tx > 0 && Map[ty * N + (tx - 1)].biome == 0) landNeighbors++;
+                    if (tx < N - 1 && Map[ty * N + (tx + 1)].biome == 0) landNeighbors++;
+
+                    if (landNeighbors < minLandNeighbors) continue;
+
+                    int d = distToWater[ty * N + tx];
+                    if (d < group.minDist || d > group.maxDist) continue;
+
+                    bool tooClose = false;
+                    for (int dy = -2; dy <= 2 && !tooClose; ++dy) {
+                        for (int dx = -2; dx <= 2; ++dx) {
+                            int ny = ty + dy;
+                            int nx = tx + dx;
+                            if (ny < 0) ny += N+1;
+                            if (ny > N) ny -= N+1;
+                            if (nx < 0) nx += N+1;
+                            if (nx > N) nx -= N+1;
+                            if (nodeUsed[ny][nx]) {
+                                tooClose = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (tooClose) continue;
+
+                    int curX = tx, curY = ty;
+                    std::vector<std::pair<SDL_Point, SDL_Point>> segments;
+                    bool reachedWaterOrRiver = false;
+                    int steps = 0;
+
+                    while (steps < maxSteps) {
+                        std::vector<int> dirs = {0,1,2,3};
+
+                        float curH = nodeHeight(curX, curY);
+                        float bestH = curH;
+                        int bestDir = -1;
+
+                        for (int d : dirs) {
+                            int nx = curX, ny = curY;
+                            if (d == 0) ny = (curY == 0) ? N : curY-1;
+                            else if (d == 1) ny = (curY == N) ? 0 : curY+1;
+                            else if (d == 2) nx = (curX == 0) ? N : curX-1;
+                            else if (d == 3) nx = (curX == N) ? 0 : curX+1;
+
+                            float nh = nodeHeight(nx, ny);
+                            if (nh > bestH) {
+                                bestH = nh;
+                                bestDir = d;
+                            }
+                        }
+
+                        if (bestDir == -1) break;
+
+                        int nx = curX, ny = curY;
+                        if (bestDir == 0) ny = (curY == 0) ? N : curY-1;
+                        else if (bestDir == 1) ny = (curY == N) ? 0 : curY+1;
+                        else if (bestDir == 2) nx = (curX == 0) ? N : curX-1;
+                        else if (bestDir == 3) nx = (curX == N) ? 0 : curX+1;
+
+                        if (nodeUsed[ny][nx]) {
+                            segments.emplace_back(SDL_Point{curX, curY}, SDL_Point{nx, ny});
+                            reachedWaterOrRiver = true;
+                            break;
+                        }
+
+                        segments.emplace_back(SDL_Point{curX, curY}, SDL_Point{nx, ny});
+
+                        bool waterFound = false;
+                        for (int dx = -1; dx <= 0 && !waterFound; ++dx) {
+                            for (int dy = -1; dy <= 0; ++dy) {
+                                int wx = (nx + dx + N) % N;
+                                int wy = (ny + dy + N) % N;
+                                if (Map[wy * N + wx].biome == 1) {
+                                    waterFound = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (waterFound) {
+                            reachedWaterOrRiver = true;
+                            break;
+                        }
+
+                        curX = nx;
+                        curY = ny;
+                        steps++;
+                    }
+
+                    if (reachedWaterOrRiver && !segments.empty()) {
+                        m_riverSegments.insert(m_riverSegments.end(), segments.begin(), segments.end());
+                        for (const auto& seg : segments) {
+                            nodeUsed[seg.first.y][seg.first.x] = true;
+                            nodeUsed[seg.second.y][seg.second.x] = true;
+                        }
+                        riversCreatedInGroup++;
+                    }
+                }
+                SDL_Log("River group [%zu]: minDist=%d maxDist=%d, created=%d/%d, attempts=%d (max=%d), efficiency=%.2f%%",
+                        g, group.minDist, group.maxDist, riversCreatedInGroup, group.count, attempts, maxAttempts,
+                        (attempts > 0 ? (100.0f * riversCreatedInGroup / attempts) : 0.0f));
+            }
+            SDL_Log("Total river segments: %zu", m_riverSegments.size());
         }
-    }
         void DesrtifyJungles() {
             std::vector<std::vector<bool>> riverNode(N+1, std::vector<bool>(N+1, false));
             for (const auto& seg : m_riverSegments) {
@@ -1190,7 +1337,6 @@ const SDL_PixelFormatDetails* dstFormat = SDL_GetPixelFormatDetails(surface->for
 
 if (!m_riverSegments.empty()) {
     Uint32 riverColor = SDL_MapRGBA(dstFormat, nullptr, 0, 0, 100, 255);
-
     float thickness = std::max(1.0f, baseTileSize / 6.0f);
     int texSizeI = static_cast<int>(TEX_SIZE);
 
@@ -1209,25 +1355,45 @@ if (!m_riverSegments.empty()) {
         if (p1.x == p2.x) {
             float rectX = x1 - thickness * 0.4f;
             float rectY = std::min(y1, y2);
-            int startX = std::max(0, (int)std::floor(rectX));
-            int endX   = std::min(texSizeI, (int)std::ceil(rectX + thickness));
-            int startY = std::max(0, (int)std::floor(rectY));
-            int endY   = std::min(texSizeI, (int)std::ceil(rectY + baseTileSize));
-            for (int py = startY; py < endY; ++py) {
-                for (int px = startX; px < endX; ++px) {
-                    dstPixels[py * dstPitch + px] = riverColor;
+            float rectW = thickness;
+            float rectH = baseTileSize;
+            for (int dx = -1; dx <= 1; ++dx) {
+                float shiftedX = rectX + dx * TEX_SIZE;
+                if (shiftedX + rectW < 0 || shiftedX >= TEX_SIZE) continue;
+                for (int dy = -1; dy <= 1; ++dy) {
+                    float shiftedY = rectY + dy * TEX_SIZE;
+                    if (shiftedY + rectH < 0 || shiftedY >= TEX_SIZE) continue;
+                    int startX = std::max(0, (int)std::floor(shiftedX));
+                    int endX = std::min(texSizeI, (int)std::ceil(shiftedX + rectW));
+                    int startY = std::max(0, (int)std::floor(shiftedY));
+                    int endY = std::min(texSizeI, (int)std::ceil(shiftedY + rectH));
+                    for (int py = startY; py < endY; ++py) {
+                        for (int px = startX; px < endX; ++px) {
+                            dstPixels[py * dstPitch + px] = riverColor;
+                        }
+                    }
                 }
             }
         } else {
             float rectX = std::min(x1, x2);
             float rectY = y1 - thickness * 0.4f;
-            int startX = std::max(0, (int)std::floor(rectX));
-            int endX   = std::min(texSizeI, (int)std::ceil(rectX + baseTileSize));
-            int startY = std::max(0, (int)std::floor(rectY));
-            int endY   = std::min(texSizeI, (int)std::ceil(rectY + thickness));
-            for (int py = startY; py < endY; ++py) {
-                for (int px = startX; px < endX; ++px) {
-                    dstPixels[py * dstPitch + px] = riverColor;
+            float rectW = baseTileSize;
+            float rectH = thickness;
+            for (int dx = -1; dx <= 1; ++dx) {
+                float shiftedX = rectX + dx * TEX_SIZE;
+                if (shiftedX + rectW < 0 || shiftedX >= TEX_SIZE) continue;
+                for (int dy = -1; dy <= 1; ++dy) {
+                    float shiftedY = rectY + dy * TEX_SIZE;
+                    if (shiftedY + rectH < 0 || shiftedY >= TEX_SIZE) continue;
+                    int startX = std::max(0, (int)std::floor(shiftedX));
+                    int endX = std::min(texSizeI, (int)std::ceil(shiftedX + rectW));
+                    int startY = std::max(0, (int)std::floor(shiftedY));
+                    int endY = std::min(texSizeI, (int)std::ceil(shiftedY + rectH));
+                    for (int py = startY; py < endY; ++py) {
+                        for (int px = startX; px < endX; ++px) {
+                            dstPixels[py * dstPitch + px] = riverColor;
+                        }
+                    }
                 }
             }
         }
