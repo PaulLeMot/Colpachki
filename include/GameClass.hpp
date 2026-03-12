@@ -48,10 +48,16 @@ class Game{
                 CreateMap();
                 SmoothClimate(2+(N/256));
                 ApplyCoastalInfluence(1);
-                GenerateForest();
+                GenerateCapitals();
+                GenerateRivers();
+                DesrtifyJungles();
+                JungleifyDeserts();
+                DesrtifyJungles();
+                DesrtifyJungles();
                 GenerateMountains();
                 AdjustMountainZones();
-                GenerateCapitals();
+                RemoveIsolatedMountains();
+                GenerateForest();
                 GenerateRivers();
                 InitButtons();
                 m_buttonsObjects.emplace_back(
@@ -385,7 +391,7 @@ class Game{
                         if (tile.zone == 4) {
                             if (base_zone >= 4 && (waterNear || tropicalNear)) {
                                 std::uniform_int_distribution<int> dis(0, 99);
-                                if (dis(m_rng) < 80) {
+                                if (dis(m_rng) < 95) {
                                     newZone = 5;
                                 }
                             }
@@ -438,16 +444,28 @@ class Game{
                 return lerp(x1, x2, v);
             };
 
-            const float scale = 0.2f;
+            const float baseScale = 0.2f;
             const float offset = 1000.0f;
+            const int octaves = 3;
+            const float persistence = 0.5f;
+            const float lacunarity = 2.0f;
 
             std::vector<float> forestNoise(N * N);
             for (int i = 0; i < N; ++i) {
                 for (int j = 0; j < N; ++j) {
-                    float x = (i + offset) * scale;
-                    float y = (j + offset) * scale;
-                    float val = noise(x, y);
-                    forestNoise[i * N + j] = (val + 1.0f) / 2.0f;
+                    float value = 0.0f;
+                    float amp = 1.0f;
+                    float freq = 1.0f;
+                    float maxAmp = 0.0f;
+                    for (int o = 0; o < octaves; ++o) {
+                        float x = (i + offset) * baseScale * freq;
+                        float y = (j + offset) * baseScale * freq;
+                        value += amp * noise(x, y);
+                        maxAmp += amp;
+                        amp *= persistence;
+                        freq *= lacunarity;
+                    }
+                    forestNoise[i * N + j] = (value / maxAmp + 1.0f) / 2.0f;
                 }
             }
 
@@ -464,7 +482,7 @@ class Game{
                 std::vector<int> indices;
                 for (int idx = 0; idx < N * N; ++idx) {
                     const Tile& tile = Map[idx];
-                    if (tile.biome == 0) {
+                    if (tile.biome == 0 && !tile.mountain) {
                         for (int z : zones) {
                             if (tile.zone == z) {
                                 values.push_back(forestNoise[idx]);
@@ -609,175 +627,314 @@ class Game{
                 attempts++;
             }
         }
-        void GenerateRivers() {
-            const int maxSteps = 2000;
-            const int minLandNeighbors = 2;
-            //std::mt19937 rng(Seed);
+    void GenerateRivers() {
+        const int maxSteps = 2000;
+        const int minLandNeighbors = 2;
 
-            struct RiverGroup { int count; int minDist; int maxDist; };
-            std::vector<RiverGroup> groups = {
-                {50, 13, 30},
-                {50, 15, 30},
-                {200, 8, 20},
-                {150, 2, 8}
-            };
+        struct RiverGroup { int count; int minDist; int maxDist; };
+        std::vector<RiverGroup> groups = {
+            {50, 13, 100},
+            {70, 15, 100},
+            {250, 8, 20},
+            {150, 2, 8}
+        };
 
-            auto nodeHeight = [&](int nodeX, int nodeY) -> float {
-                float sum = 0.0f;
-                int count = 0;
-                for (int dx = -1; dx <= 0; ++dx) {
-                    for (int dy = -1; dy <= 0; ++dy) {
-                        int tx = nodeX + dx;
-                        int ty = nodeY + dy;
-                        if (tx >= 0 && tx < N && ty >= 0 && ty < N) {
-                            sum += m_heightMap[ty * N + tx];
-                            count++;
+        auto nodeHeight = [&](int nodeX, int nodeY) -> float {
+            float sum = 0.0f;
+            int count = 0;
+            for (int dx = -1; dx <= 0; ++dx) {
+                for (int dy = -1; dy <= 0; ++dy) {
+                    int tx = nodeX + dx;
+                    int ty = nodeY + dy;
+                    int txw = (tx + N) % N;
+                    int tyw = (ty + N) % N;
+                    sum += m_heightMap[tyw * N + txw];
+                    count++;
+                }
+            }
+            return (count == 0) ? 0.0f : sum / count;
+        };
+        std::vector<int> distToWater(N * N, -1);
+        std::queue<std::pair<int,int>> q;
+        for (int i = 0; i < N; ++i) {
+            for (int j = 0; j < N; ++j) {
+                if (Map[i * N + j].biome == 1) {
+                    distToWater[i * N + j] = 0;
+                    q.push({i, j});
+                }
+            }
+        }
+        int dirs[4][2] = {{-1,0},{1,0},{0,-1},{0,1}};
+        while (!q.empty()) {
+            auto [y, x] = q.front(); q.pop();
+            int curDist = distToWater[y * N + x];
+            for (auto& d : dirs) {
+                int ny = (y + d[0] + N) % N;
+                int nx = (x + d[1] + N) % N;
+                if (distToWater[ny * N + nx] == -1) {
+                    distToWater[ny * N + nx] = curDist + 1;
+                    q.push({ny, nx});
+                }
+            }
+        }
+
+        m_riverSegments.clear();
+        std::vector<std::vector<bool>> nodeUsed(N+1, std::vector<bool>(N+1, false));
+
+        std::uniform_int_distribution<int> dist(0, N-1);
+
+        for (const auto& group : groups) {
+            int riversCreatedInGroup = 0;
+            int attempts = 0;
+            const int maxAttempts = group.count * 1000;
+
+            while (riversCreatedInGroup < group.count && attempts < maxAttempts) {
+                attempts++;
+                int tx = dist(m_rng);
+                int ty = dist(m_rng);
+
+                if (Map[ty * N + tx].biome != 0) continue;
+                if (Map[ty * N + tx].zone == 4) continue;
+
+                int landNeighbors = 0;
+                if (ty > 0 && Map[(ty - 1) * N + tx].biome == 0) landNeighbors++;
+                if (ty < N - 1 && Map[(ty + 1) * N + tx].biome == 0) landNeighbors++;
+                if (tx > 0 && Map[ty * N + (tx - 1)].biome == 0) landNeighbors++;
+                if (tx < N - 1 && Map[ty * N + (tx + 1)].biome == 0) landNeighbors++;
+
+                if (landNeighbors < minLandNeighbors) continue;
+
+                int d = distToWater[ty * N + tx];
+                if (d < group.minDist || d > group.maxDist) continue;
+                bool tooClose = false;
+                for (int dy = -2; dy <= 2 && !tooClose; ++dy) {
+                    for (int dx = -2; dx <= 2; ++dx) {
+                        int ny = ty + dy;
+                        int nx = tx + dx;
+                        if (ny < 0) ny += N+1;
+                        if (ny > N) ny -= N+1;
+                        if (nx < 0) nx += N+1;
+                        if (nx > N) nx -= N+1;
+                        if (nodeUsed[ny][nx]) {
+                            tooClose = true;
+                            break;
                         }
                     }
                 }
-                return (count == 0) ? 0.0f : sum / count;
-            };
+                if (tooClose) continue;
 
-            std::vector<int> distToWater(N * N, -1);
-            std::queue<std::pair<int,int>> q;
+                int curX = tx, curY = ty;
+                std::vector<std::pair<SDL_Point, SDL_Point>> segments;
+                bool reachedWater = false;
+                int steps = 0;
+
+                while (steps < maxSteps) {
+                    std::vector<int> dirs = {0,1,2,3};
+
+                    float curH = nodeHeight(curX, curY);
+                    float bestH = curH;
+                    int bestDir = -1;
+
+                    for (int d : dirs) {
+                        int nx = curX, ny = curY;
+                        if (d == 0) ny = (curY == 0) ? N : curY-1;
+                        else if (d == 1) ny = (curY == N) ? 0 : curY+1;
+                        else if (d == 2) nx = (curX == 0) ? N : curX-1;
+                        else if (d == 3) nx = (curX == N) ? 0 : curX+1;
+
+                        float nh = nodeHeight(nx, ny);
+                        if (nh > bestH) {
+                            bestH = nh;
+                            bestDir = d;
+                        }
+                    }
+
+                    if (bestDir == -1) break;
+
+                    int nx = curX, ny = curY;
+                    if (bestDir == 0) ny = (curY == 0) ? N : curY-1;
+                    else if (bestDir == 1) ny = (curY == N) ? 0 : curY+1;
+                    else if (bestDir == 2) nx = (curX == 0) ? N : curX-1;
+                    else if (bestDir == 3) nx = (curX == N) ? 0 : curX+1;
+
+                    segments.emplace_back(SDL_Point{curX, curY}, SDL_Point{nx, ny});
+                    bool waterFound = false;
+                    for (int dx = -1; dx <= 0 && !waterFound; ++dx) {
+                        for (int dy = -1; dy <= 0; ++dy) {
+                            int wx = (nx + dx + N) % N;
+                            int wy = (ny + dy + N) % N;
+                            if (Map[wy * N + wx].biome == 1) {
+                                waterFound = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (waterFound) {
+                        reachedWater = true;
+                        break;
+                    }
+
+                    curX = nx;
+                    curY = ny;
+                    steps++;
+                }
+
+                if (reachedWater && !segments.empty()) {
+                    m_riverSegments.insert(m_riverSegments.end(), segments.begin(), segments.end());
+                    for (const auto& seg : segments) {
+                        nodeUsed[seg.first.y][seg.first.x] = true;
+                        nodeUsed[seg.second.y][seg.second.x] = true;
+                    }
+                    riversCreatedInGroup++;
+                }
+            }
+        }
+    }
+        void DesrtifyJungles() {
+            std::vector<std::vector<bool>> riverNode(N+1, std::vector<bool>(N+1, false));
+            for (const auto& seg : m_riverSegments) {
+                riverNode[seg.first.y][seg.first.x] = true;
+                riverNode[seg.second.y][seg.second.x] = true;
+            }
+
             for (int i = 0; i < N; ++i) {
                 for (int j = 0; j < N; ++j) {
-                    if (Map[i * N + j].biome == 1) {
-                        distToWater[i * N + j] = 0;
+                    Tile& tile = Map[i * N + j];
+                    if (tile.biome != 0 || (tile.zone != 5 && tile.zone != 3)) continue;
+
+                    int desertCount = 0;
+                    for (int di = -1; di <= 1; ++di) {
+                        for (int dj = -1; dj <= 1; ++dj) {
+                            if (di == 0 && dj == 0) continue;
+                            int ni = (i + di + N) % N;
+                            int nj = (j + dj + N) % N;
+                            const Tile& nb = Map[ni * N + nj];
+                            if (nb.biome == 0 && nb.zone == 4) desertCount++;
+                        }
+                    }
+                    if (desertCount < 3) continue;
+
+                    bool waterNear = false;
+                    for (int di = -2; di <= 2 && !waterNear; ++di) {
+                        for (int dj = -2; dj <= 2; ++dj) {
+                            if (di == 0 && dj == 0) continue;
+                            int ni = (i + di + N) % N;
+                            int nj = (j + dj + N) % N;
+                            if (Map[ni * N + nj].biome == 1) {
+                                waterNear = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (waterNear) continue;
+
+                    bool riverNear = false;
+                    for (int dy = -1; dy <= 2 && !riverNear; ++dy) {
+                        for (int dx = -1; dx <= 2; ++dx) {
+                            int ny = (i + dy + (N+1)) % (N+1);
+                            int nx = (j + dx + (N+1)) % (N+1);
+                            if (riverNode[ny][nx]) {
+                                riverNear = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (riverNear) continue;
+
+                    tile.zone = 4;
+                }
+            }
+        }
+        void JungleifyDeserts() {
+            const int INF = 1e9;
+            const int MAX_DIST = 1; 
+            std::vector<int> distToPlains(N * N, INF);
+            std::vector<int> distToJungles(N * N, INF);
+            std::queue<std::pair<int, int>> q;
+            int dirs[4][2] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
+            for (int i = 0; i < N; ++i) {
+                for (int j = 0; j < N; ++j) {
+                    if (Map[i * N + j].biome == 0 && Map[i * N + j].zone == 3) {
+                        distToPlains[i * N + j] = 0;
                         q.push({i, j});
                     }
                 }
             }
-            int dirs[4][2] = {{-1,0},{1,0},{0,-1},{0,1}};
             while (!q.empty()) {
                 auto [y, x] = q.front(); q.pop();
-                int curDist = distToWater[y * N + x];
+                int cur = distToPlains[y * N + x];
                 for (auto& d : dirs) {
-                    int ny = y + d[0];
-                    int nx = x + d[1];
-                    if (ny >= 0 && ny < N && nx >= 0 && nx < N && distToWater[ny * N + nx] == -1) {
-                        distToWater[ny * N + nx] = curDist + 1;
+                    int ny = (y + d[0] + N) % N;
+                    int nx = (x + d[1] + N) % N;
+                    if (Map[ny * N + nx].biome == 0 && distToPlains[ny * N + nx] == INF) {
+                        distToPlains[ny * N + nx] = cur + 1;
                         q.push({ny, nx});
                     }
                 }
             }
 
-            m_riverSegments.clear();
-            std::vector<std::vector<bool>> nodeUsed(N+1, std::vector<bool>(N+1, false));
-
-            std::uniform_int_distribution<int> dist(0, N-1);
-
-            for (const auto& group : groups) {
-                int riversCreatedInGroup = 0;
-                int attempts = 0;
-                const int maxAttempts = group.count * 1000;
-
-                while (riversCreatedInGroup < group.count && attempts < maxAttempts) {
-                    attempts++;
-                    int tx = dist(m_rng);
-                    int ty = dist(m_rng);
-
-                    if (Map[ty * N + tx].biome != 0) continue;
-                    if (Map[ty * N + tx].zone == 4) continue;
-
-                    int landNeighbors = 0;
-                    if (ty > 0 && Map[(ty - 1) * N + tx].biome == 0) landNeighbors++;
-                    if (ty < N - 1 && Map[(ty + 1) * N + tx].biome == 0) landNeighbors++;
-                    if (tx > 0 && Map[ty * N + (tx - 1)].biome == 0) landNeighbors++;
-                    if (tx < N - 1 && Map[ty * N + (tx + 1)].biome == 0) landNeighbors++;
-
-                    if (landNeighbors < minLandNeighbors) continue;
-
-                    int d = distToWater[ty * N + tx];
-                    if (d < group.minDist || d > group.maxDist) continue;
-
-                    bool tooClose = false;
-                    for (int dy = -2; dy <= 2 && !tooClose; ++dy) {
-                        for (int dx = -2; dx <= 2; ++dx) {
-                            int ny = ty + dy;
-                            int nx = tx + dx;
-                            if (ny >= 0 && ny <= N && nx >= 0 && nx <= N && nodeUsed[ny][nx]) {
-                                tooClose = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (tooClose) continue;
-
-                    int curX = tx, curY = ty;
-                    std::vector<std::pair<SDL_Point, SDL_Point>> segments;
-                    bool reachedWater = false;
-                    int steps = 0;
-
-                    while (steps < maxSteps) {
-                        std::vector<int> dirs;
-                        if (curY > 0) dirs.push_back(0);
-                        if (curY < N) dirs.push_back(1);
-                        if (curX > 0) dirs.push_back(2);
-                        if (curX < N) dirs.push_back(3);
-
-                        float curH = nodeHeight(curX, curY);
-                        float bestH = curH;
-                        int bestDir = -1;
-
-                        for (int d : dirs) {
-                            int nx = curX, ny = curY;
-                            if (d == 0) ny--;
-                            else if (d == 1) ny++;
-                            else if (d == 2) nx--;
-                            else if (d == 3) nx++;
-
-                            float nh = nodeHeight(nx, ny);
-                            if (nh > bestH) {
-                                bestH = nh;
-                                bestDir = d;
-                            }
-                        }
-
-                        if (bestDir == -1) break;
-
-                        int nx = curX, ny = curY;
-                        if (bestDir == 0) ny--;
-                        else if (bestDir == 1) ny++;
-                        else if (bestDir == 2) nx--;
-                        else if (bestDir == 3) nx++;
-
-                        segments.emplace_back(SDL_Point{curX, curY}, SDL_Point{nx, ny});
-
-                        bool waterFound = false;
-                        for (int dx = -1; dx <= 0 && !waterFound; ++dx) {
-                            for (int dy = -1; dy <= 0; ++dy) {
-                                int wx = nx + dx;
-                                int wy = ny + dy;
-                                if (wx >= 0 && wx < N && wy >= 0 && wy < N) {
-                                    if (Map[wy * N + wx].biome == 1) {
-                                        waterFound = true;
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-
-                        if (waterFound) {
-                            reachedWater = true;
-                            break;
-                        }
-
-                        curX = nx;
-                        curY = ny;
-                        steps++;
-                    }
-
-                    if (reachedWater && !segments.empty()) {
-                        m_riverSegments.insert(m_riverSegments.end(), segments.begin(), segments.end());
-                        for (const auto& seg : segments) {
-                            nodeUsed[seg.first.y][seg.first.x] = true;
-                            nodeUsed[seg.second.y][seg.second.x] = true;
-                        }
-                        riversCreatedInGroup++;
+            for (int i = 0; i < N; ++i) {
+                for (int j = 0; j < N; ++j) {
+                    if (Map[i * N + j].biome == 0 && Map[i * N + j].zone == 5) {
+                        distToJungles[i * N + j] = 0;
+                        q.push({i, j});
                     }
                 }
             }
+            while (!q.empty()) {
+                auto [y, x] = q.front(); q.pop();
+                int cur = distToJungles[y * N + x];
+                for (auto& d : dirs) {
+                    int ny = (y + d[0] + N) % N;
+                    int nx = (x + d[1] + N) % N;
+                    if (Map[ny * N + nx].biome == 0 && distToJungles[ny * N + nx] == INF) {
+                        distToJungles[ny * N + nx] = cur + 1;
+                        q.push({ny, nx});
+                    }
+                }
+            }
+
+            std::vector<Tile> newMap = Map;
+            for (int i = 0; i < N; ++i) {
+                for (int j = 0; j < N; ++j) {
+                    const Tile& tile = Map[i * N + j];
+                    if (tile.biome != 0 || tile.zone != 4) continue;
+
+                    int dP = distToPlains[i * N + j];
+                    int dJ = distToJungles[i * N + j];
+                    if (dP > MAX_DIST && dJ > MAX_DIST) continue;
+                    if (dP < dJ) {
+                        newMap[i * N + j].zone = 3;
+                    } else if (dJ < dP) {
+                        newMap[i * N + j].zone = 5;
+                    }
+                }
+            }
+            Map = std::move(newMap);
+        }
+        void RemoveIsolatedMountains() {
+            std::vector<Tile> newMap = Map;
+            for (int i = 0; i < N; ++i) {
+                for (int j = 0; j < N; ++j) {
+                    if (!Map[i * N + j].mountain) continue;
+
+                    int mountainNeighbors = 0;
+                    for (int di = -1; di <= 1; ++di) {
+                        for (int dj = -1; dj <= 1; ++dj) {
+                            if (di == 0 && dj == 0) continue;
+                            int ni = (i + di + N) % N;
+                            int nj = (j + dj + N) % N;
+                            if (Map[ni * N + nj].mountain) ++mountainNeighbors;
+                        }
+                    }
+
+                    if (mountainNeighbors >= 8) {
+                        newMap[i * N + j].mountain = false;
+                    }
+                }
+            }
+            Map = std::move(newMap);
         }
         void HandleTileClick(int mouseX, int mouseY) {
             if (mouseX >= Otstup && mouseX <= Otstup + m_height && mouseY >= 0 && mouseY <= m_height) {
@@ -1050,7 +1207,7 @@ if (!m_riverSegments.empty()) {
         float y2 = p2.y * baseTileSize;
 
         if (p1.x == p2.x) {
-            float rectX = x1 - thickness * 0.3f;
+            float rectX = x1 - thickness * 0.4f;
             float rectY = std::min(y1, y2);
             int startX = std::max(0, (int)std::floor(rectX));
             int endX   = std::min(texSizeI, (int)std::ceil(rectX + thickness));
@@ -1063,7 +1220,7 @@ if (!m_riverSegments.empty()) {
             }
         } else {
             float rectX = std::min(x1, x2);
-            float rectY = y1 - thickness * 0.3f;
+            float rectY = y1 - thickness * 0.4f;
             int startX = std::max(0, (int)std::floor(rectX));
             int endX   = std::min(texSizeI, (int)std::ceil(rectX + baseTileSize));
             int startY = std::max(0, (int)std::floor(rectY));
