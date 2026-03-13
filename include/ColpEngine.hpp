@@ -56,16 +56,22 @@ class Button{
             int currentG = hovered? 250 : g;
             int currentB = hovered? 250 : b;
             SDL_SetRenderDrawColor(m_renderer, currentR, currentG, currentB, 255);
-                SDL_FRect buttonRect = {x,y,w,h};
-                SDL_RenderFillRect(m_renderer, &buttonRect);
-                if (m_buttonTexture) {
-                    float tw, th;
-                    SDL_GetTextureSize(m_buttonTexture, &tw, &th);
-                    float tx = buttonRect.x + (buttonRect.w - tw) / 2.0f;
-                    float ty = buttonRect.y + (buttonRect.h - th) / 2.0f;
-                    SDL_FRect textRect = {tx, ty, tw, th};
-                    SDL_RenderTexture(m_renderer, m_buttonTexture, nullptr, &textRect);
+            SDL_FRect buttonRect = {x, y, w, h};
+            SDL_RenderFillRect(m_renderer, &buttonRect);
+            if (m_buttonTexture) {
+                float tw, th;
+                SDL_GetTextureSize(m_buttonTexture, &tw, &th);
+                float scale = 1.0f;
+                if (tw > w || th > h) {
+                    scale = std::min(w / tw, h / th);
                 }
+                float scaled_tw = tw * scale;
+                float scaled_th = th * scale;
+                float tx = buttonRect.x + (buttonRect.w - scaled_tw) / 2.0f;
+                float ty = buttonRect.y + (buttonRect.h - scaled_th) / 2.0f;
+                SDL_FRect textRect = {tx, ty, scaled_tw, scaled_th};
+                SDL_RenderTexture(m_renderer, m_buttonTexture, nullptr, &textRect);
+            }
         }
         void LoadButtonTexture() {
         SDL_Color colorText = {0, 0, 0, 255};
@@ -315,9 +321,15 @@ public:
         if (m_textTexture) {
             float tw, th;
             SDL_GetTextureSize(m_textTexture, &tw, &th);
-            float tx = bgRect.x + (bgRect.w - tw) / 2.0f;
-            float ty = bgRect.y + (bgRect.h - th) / 2.0f;
-            SDL_FRect textRect = {tx, ty, tw, th};
+            float scale = 1.0f;
+            if (tw > m_w || th > m_h) {
+                scale = std::min(m_w / tw, m_h / th);
+            }
+            float scaled_tw = tw * scale;
+            float scaled_th = th * scale;
+            float tx = m_x + (m_w - scaled_tw) / 2.0f;
+            float ty = m_y + (m_h - scaled_th) / 2.0f;
+            SDL_FRect textRect = {tx, ty, scaled_tw, scaled_th};
             SDL_RenderTexture(m_renderer, m_textTexture, nullptr, &textRect);
         }
     }
