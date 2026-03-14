@@ -272,10 +272,12 @@ public:
           TTF_Font* font,
           const std::string& text,
           float x, float y, float w, float h,
-          int r, int g, int b)
+          int r, int g, int b,
+          int tr = 0, int tg = 0, int tb = 0)
         : m_renderer(renderer), m_font(font), m_text(text),
           m_x(x), m_y(y), m_w(w), m_h(h),
           m_r(r), m_g(g), m_b(b),
+          m_textColor{static_cast<Uint8>(tr), static_cast<Uint8>(tg), static_cast<Uint8>(tb), 255},
           m_textTexture(nullptr), m_active(false) {
         UpdateTexture(m_text);
     }
@@ -289,6 +291,7 @@ public:
           m_text(std::move(other.m_text)),
           m_x(other.m_x), m_y(other.m_y), m_w(other.m_w), m_h(other.m_h),
           m_r(other.m_r), m_g(other.m_g), m_b(other.m_b),
+          m_textColor(other.m_textColor),
           m_textTexture(other.m_textTexture),
           m_active(other.m_active) {
         other.m_textTexture = nullptr;
@@ -302,6 +305,7 @@ public:
             m_text = std::move(other.m_text);
             m_x = other.m_x; m_y = other.m_y; m_w = other.m_w; m_h = other.m_h;
             m_r = other.m_r; m_g = other.m_g; m_b = other.m_b;
+            m_textColor = other.m_textColor;
             m_textTexture = other.m_textTexture;
             m_active = other.m_active;
             other.m_textTexture = nullptr;
@@ -333,18 +337,22 @@ public:
             SDL_RenderTexture(m_renderer, m_textTexture, nullptr, &textRect);
         }
     }
+
     void SetText(const std::string& newText) {
         if (m_text != newText) {
             m_text = newText;
             UpdateTexture(m_text);
         }
     }
+
     const std::string& GetText() const {
         return m_text;
     }
+
     void SetActive(bool active) {
         m_active = active;
     }
+
     bool IsActive() const {
         return m_active;
     }
@@ -355,6 +363,7 @@ private:
     std::string m_text;
     float m_x, m_y, m_w, m_h;
     int m_r, m_g, m_b;
+    SDL_Color m_textColor;
     SDL_Texture* m_textTexture;
     bool m_active;
 
@@ -362,8 +371,7 @@ private:
         FreeTexture();
         if (text.empty()) return;
 
-        SDL_Color color = {0, 0, 110, 255};
-        SDL_Surface* surface = TTF_RenderText_Blended(m_font, text.c_str(), 0, color);
+        SDL_Surface* surface = TTF_RenderText_Blended(m_font, text.c_str(), 0, m_textColor);
         if (surface) {
             m_textTexture = SDL_CreateTextureFromSurface(m_renderer, surface);
             SDL_DestroySurface(surface);

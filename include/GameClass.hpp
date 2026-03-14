@@ -67,17 +67,29 @@ class Game{
                     m_width-(m_width/10),
                     0,
                     m_width/10,m_width/10,240,240,240);
-                    CreateMapTexture();
-                    //m_atlasTexture = SDL_CreateTextureFromSurface(m_renderer, m_atlasSurface);
-                    //if (!m_atlasTexture) {
-                    //    SDL_Log("Failed to create atlas texture: %s", SDL_GetError());
-                    //}
-                    //if (m_atlasTexture) {
-                    //    SDL_SetTextureScaleMode(m_atlasTexture, SDL_SCALEMODE_PIXELART);
-                    //}
-                    m_atlasTileSize = m_atlasSurface->w / 8;
-                    SDL_DestroySurface(m_atlasSurface);
-                    m_atlasSurface = nullptr;
+                float freeWidth = m_width - (Otstup + m_height);
+                float infoW = freeWidth * 0.8f;
+                float infoX = Otstup + m_height + (freeWidth - infoW) / 2;
+                float infoY = m_height * 0.75f;
+                float infoH = 80.0f;
+                m_infoLabel = std::make_unique<Label>(
+                    m_renderer, m_font, "",
+                    infoX, infoY, infoW, infoH,
+                    0, 0, 0,
+                    255, 255, 255 
+                );
+                m_infoLabel->SetActive(false);
+                CreateMapTexture();
+                //m_atlasTexture = SDL_CreateTextureFromSurface(m_renderer, m_atlasSurface);
+                //if (!m_atlasTexture) {
+                //    SDL_Log("Failed to create atlas texture: %s", SDL_GetError());
+                //}
+                //if (m_atlasTexture) {
+                //    SDL_SetTextureScaleMode(m_atlasTexture, SDL_SCALEMODE_PIXELART);
+                //}
+                m_atlasTileSize = m_atlasSurface->w / 8;
+                SDL_DestroySurface(m_atlasSurface);
+                m_atlasSurface = nullptr;
         }
         ~Game() {
             if (m_mapTexture) SDL_DestroyTexture(m_mapTexture);
@@ -110,7 +122,21 @@ class Game{
                 }
             }
             //RenderBuildings();
-
+            if (m_hasSelection) {
+                float tileSize = (m_height / N) * zoom;
+                float screenX = Otstup + (m_selX - panX) * tileSize;
+                float screenY = (m_selY - panY) * tileSize;
+                float thickness = tileSize * 0.0625f;
+                SDL_SetRenderDrawColor(m_renderer, 255, 255, 255, 255);
+                SDL_FRect topRect = { screenX, screenY, tileSize, thickness };
+                SDL_RenderFillRect(m_renderer, &topRect);
+                SDL_FRect bottomRect = { screenX, screenY + tileSize - thickness, tileSize, thickness };
+                SDL_RenderFillRect(m_renderer, &bottomRect);
+                SDL_FRect leftRect = { screenX, screenY, thickness, tileSize };
+                SDL_RenderFillRect(m_renderer, &leftRect);
+                SDL_FRect rightRect = { screenX + tileSize - thickness, screenY, thickness, tileSize };
+                SDL_RenderFillRect(m_renderer, &rightRect);
+            }
             SDL_SetRenderClipRect(m_renderer, nullptr);
 
             m_buttonsObjects[0].RenderButton();
@@ -119,6 +145,7 @@ class Game{
                     btn.RenderButton();
                 }
             }
+            m_infoLabel->Render();
         }
 /*       void RenderBuildings() {
             float tileSize = (m_height / N) * zoom;
@@ -169,6 +196,33 @@ class Game{
 
                 const Tile& tile = Map[iy * N + ix];
                 SDL_Log("Tile clicked: (%d, %d) biome=%d zone=%d", ix, iy, tile.biome, tile.zone);
+                m_hasSelection = true;
+                m_selX = ix;
+                m_selY = iy;
+
+                std::string info;
+                if (tile.biome == 1) {
+                    info = "Waters";
+                } else {
+                    switch (tile.zone) {
+                        case 0: info = "Snowy"; break;
+                        case 1: info = "Taiga"; break;
+                        case 2: info = "Temperate"; break;
+                        case 3: info = "Savanna"; break;
+                        case 4: info = "Desert"; break;
+                        case 5: info = "Jungle"; break;
+                        default: info = "Unknown";
+                    }
+                    if (tile.mountain) {
+                        info += " Mountains";
+                    } else if (tile.forest) {
+                        info += " Forest";
+                    } else {
+                        info += " Plains";
+                    }
+                }
+                m_infoLabel->SetText(info);
+                m_infoLabel->SetActive(true);
             }
         }
         void HandleEvent(const SDL_Event& event) {
@@ -240,6 +294,10 @@ class Game{
                 case SDLK_D: m_rightPressed = true; break;
                 case SDLK_Z: m_zoomInPressed = true; break;
                 case SDLK_X: m_zoomOutPressed = true; break;
+                case SDLK_ESCAPE:
+                m_hasSelection = false;
+                m_infoLabel->SetActive(false);
+                break;
             }
         }
         if (event.type == SDL_EVENT_KEY_UP) {
@@ -354,7 +412,10 @@ class Game{
         std::vector<std::pair<SDL_Point, SDL_Point>> m_riverSegments;
         std::mt19937 m_rng;
         MapGenerator m_generator;
-        std::vector<Tile> Map; 
+        std::vector<Tile> Map;
+        bool m_hasSelection = false;
+        int m_selX = 0, m_selY = 0;
+        std::unique_ptr<Label> m_infoLabel;
 
         void CreateMapTexture() {
             if (!m_atlasSurface) return;
