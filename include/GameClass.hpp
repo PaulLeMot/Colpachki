@@ -137,6 +137,31 @@ class Game{
                         210, 210, 210
                     );
                 }
+                m_gameTimeHours = 0.0f;
+                m_speedMode = 0;
+                float progressBarY = btnH + 5 + btnH;
+                float progressBarX = Otstup + m_height;
+                float progressBarW = (m_width - m_width/20 - 2) - progressBarX;
+                m_progressBarX = progressBarX;
+                m_progressBarY = progressBarY;
+                m_progressBarW = progressBarW;
+                m_progressBarH = 10;
+                m_year = 0;
+                m_month = 1;
+                m_day = 1;
+                float calendarY = btnH + 5;
+                float calendarX = Otstup + m_height;
+                float calendarW = m_progressBarW;
+                float calendarH = btnH * 0.6f;
+
+                m_calendarLabel = std::make_unique<Label>(
+                    m_renderer, m_font,
+                    "Year 0 Month 1 Day 1",
+                    calendarX, calendarY, calendarW, calendarH,
+                    0, 0, 0,
+                    240, 240, 240
+                );
+                m_calendarLabel->SetActive(true);
                 CreateMapTexture();
                 //m_atlasTexture = SDL_CreateTextureFromSurface(m_renderer, m_atlasSurface);
                 //if (!m_atlasTexture) {
@@ -222,6 +247,17 @@ class Game{
             }
             for (auto& btn : m_speedButtons) {
                 btn.RenderButton();
+            }
+            SDL_SetRenderDrawColor(m_renderer, 240, 240, 240, 255);
+            SDL_FRect bgRect = { m_progressBarX, m_progressBarY, m_progressBarW, m_progressBarH };
+            SDL_RenderFillRect(m_renderer, &bgRect);
+
+            float fillWidth = (m_gameTimeHours / 24.0f) * m_progressBarW;
+            SDL_SetRenderDrawColor(m_renderer, 0, 210, 0, 255);
+            SDL_FRect fillRect = { m_progressBarX, m_progressBarY, fillWidth, m_progressBarH };
+            SDL_RenderFillRect(m_renderer, &fillRect);
+            if (m_calendarLabel) {
+                m_calendarLabel->Render();
             }
             m_infoLabel->Render();
             if (CanRecruit()) {
@@ -322,6 +358,17 @@ class Game{
                 if (event.button.button == SDL_BUTTON_LEFT) {
                     HandleTileClick(mouseX, mouseY);
                 }
+                for (int i = 0; i < m_speedButtons.size(); ++i) {
+                    if (m_speedButtons[i].GetButtonAt(mouseX, mouseY)) {
+                        switch (i) {
+                            case 0: m_speedMode = 0; break;
+                            case 1: m_speedMode = 1; break;
+                            case 2: m_speedMode = 2; break;
+                            case 3: m_speedMode = 3; break;
+                        }
+                        return;
+                    }
+                }
             }
         if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.button == SDL_BUTTON_MIDDLE) {
             isDragging = true;
@@ -406,6 +453,29 @@ class Game{
                     ZoomAt(m_width/2.0f, m_height/2.0f, factor);
                 }
             }
+            if (m_speedMode != 0) {
+                float speedFactor = 1.0f;
+                if (m_speedMode == 2) speedFactor = 6.0f;
+                else if (m_speedMode == 3) speedFactor = 12.0f;
+                m_gameTimeHours += deltaTime * speedFactor;
+
+                if (m_gameTimeHours >= 24.0f) {
+                    m_gameTimeHours = fmod(m_gameTimeHours, 24.0f);
+                    m_day++;
+                    if (m_day > 30) {
+                        m_day = 1;
+                        m_month++;
+                        if (m_month > 12) {
+                            m_month = 1;
+                            m_year++;
+                        }
+                    }
+                    std::string calendarText = "Year " + std::to_string(m_year) +
+                                            " Month " + std::to_string(m_month) +
+                                            " Day " + std::to_string(m_day);
+                    m_calendarLabel->SetText(calendarText);
+                }
+            }
         }
 
         void ZoomAt(float mouseX, float mouseY, float factor) {
@@ -488,6 +558,15 @@ class Game{
         std::unique_ptr<Button> m_upgradeButton;
         std::unique_ptr<Button> m_recruitButton;
         uint16_t m_playerCapitalX = 0, m_playerCapitalY = 0;
+        //time
+        float m_gameTimeHours;
+        int m_speedMode;
+        float m_progressBarX, m_progressBarY, m_progressBarW, m_progressBarH;
+        //calendar
+        int m_year;
+        int m_month;
+        int m_day;
+        std::unique_ptr<Label> m_calendarLabel;
 
         bool CanUpgrade() const {
             return m_hasSelection && 
