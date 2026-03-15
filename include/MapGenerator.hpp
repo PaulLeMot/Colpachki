@@ -16,6 +16,7 @@ struct Tile {
     bool forest;
     bool mountain;
     uint8_t buildingLevel;
+    SDL_Color capitalColor;
 };
 
 class MapGenerator {
@@ -64,7 +65,6 @@ public:
         const float persistence = 0.5f;
         const float lacunarity = 2.7f;
         const float scale = 0.02f / (N / 256.0f);
-        const float T = N * scale;  // не используется
 
         const int gridSize = 2 * N;
         std::vector<float> grid(gridSize * gridSize);
@@ -118,7 +118,7 @@ public:
         for (float& v : rawValues) {
             v = (v - minVal) / (maxVal - minVal);
         }
-        heightMap = rawValues;  // исправлено: вместо m_heightMap
+        heightMap = rawValues;
 
         std::vector<float> sorted = rawValues;
         std::sort(sorted.begin(), sorted.end());
@@ -162,10 +162,11 @@ public:
                 }
 
                 Map[i * N + j] = {static_cast<uint16_t>(i), static_cast<uint16_t>(j),
-                                  static_cast<uint8_t>(biome), static_cast<int8_t>(zone), false, false, 0};
+                  static_cast<uint8_t>(biome), static_cast<int8_t>(zone),
+                  false, false, 0, {0,0,0,0}};
             }
         }
-        perm = p;  // исправлено: вместо m_perm
+        perm = p;
     }
 
     void SmoothClimate(std::vector<Tile>& Map, int N, int iterations) {
@@ -378,7 +379,6 @@ public:
     }
 
     void GenerateMountains(std::vector<Tile>& Map, int N) {
-        if (Map.empty()) return; // пример проверки
 
         const int numPoints = 160;
         std::uniform_real_distribution<float> dist(0.0f, N);
@@ -458,42 +458,74 @@ public:
         Map = std::move(newMap);
     }
 
-    void GenerateCapitals(std::vector<Tile>& Map, int N) {
-        const int targetCount = 100;
-        const float minDist = 10.0f;
-        std::vector<std::pair<int,int>> positions;
-        std::uniform_int_distribution<int> dist(0, N-1);
+void GenerateCapitals(std::vector<Tile>& Map, int N) {
+    const int targetCount = 100;
+    const float minDist = 10.0f;
+    std::vector<std::pair<int,int>> positions;
+    std::uniform_int_distribution<int> dist(0, N-1);
 
-        auto distance = [&](int x1, int y1, int x2, int y2) {
-            int dx = std::abs(x1 - x2);
-            int dy = std::abs(y1 - y2);
-            dx = std::min(dx, N - dx);
-            dy = std::min(dy, N - dy);
-            return std::sqrt(dx*dx + dy*dy);
-        };
+    auto distance = [&](int x1, int y1, int x2, int y2) {
+        int dx = std::abs(x1 - x2);
+        int dy = std::abs(y1 - y2);
+        dx = std::min(dx, N - dx);
+        dy = std::min(dy, N - dy);
+        return std::sqrt(dx*dx + dy*dy);
+    };
 
-        int attempts = 0;
-        const int maxAttempts = 10000;
-        while (positions.size() < targetCount && attempts < maxAttempts) {
-            int x = dist(m_rng);
-            int y = dist(m_rng);
-            int idx = y * N + x;
-            if (Map[idx].biome != 0) continue;
-
-            bool ok = true;
-            for (auto& pos : positions) {
-                if (distance(x, y, pos.first, pos.second) < minDist) {
-                    ok = false;
-                    break;
-                }
-            }
-            if (ok) {
-                positions.emplace_back(x, y);
-                Map[idx].buildingLevel = 3;
-            }
+    int attempts = 0;
+    const int maxAttempts = 10000;
+    while (positions.size() < targetCount && attempts < maxAttempts) {
+        int x = dist(m_rng);
+        int y = dist(m_rng);
+        int idx = y * N + x;
+        if (Map[idx].biome != 0) {
             attempts++;
+            continue;
         }
+
+        bool ok = true;
+        for (auto& pos : positions) {
+            if (distance(x, y, pos.first, pos.second) < minDist) {
+                ok = false;
+                break;
+            }
+        }
+
+        if (ok) {
+            positions.emplace_back(x, y);
+            m_capitals.emplace_back(x, y);
+            int colorIndex = positions.size() - 1;
+
+            float hue = (float)colorIndex / (float)targetCount;
+            float r=0, g=0, b=0;
+            float h = hue * 6.0f;
+            int sector = (int)h;
+            float f = h - sector;
+            float p = 0.0f;
+            float q = 1.0f - f;
+            float t = f;
+
+            switch (sector % 6) {
+                case 0: r = 1.0f; g = t; b = p; break;
+                case 1: r = q; g = 1.0f; b = p; break;
+                case 2: r = p; g = 1.0f; b = t; break;
+                case 3: r = p; g = q; b = 1.0f; break;
+                case 4: r = t; g = p; b = 1.0f; break;
+                case 5: r = 1.0f; g = p; b = q; break;
+            }
+
+            SDL_Color color = {
+                static_cast<Uint8>(r * 255),
+                static_cast<Uint8>(g * 255),
+                static_cast<Uint8>(b * 255),
+                255
+            };
+            Map[idx].capitalColor = color;
+            Map[idx].buildingLevel = 1;
+        }
+        attempts++;
     }
+}
 
     void GenerateRivers(std::vector<Tile>& Map, std::vector<float>& heightMap,
                         std::vector<std::pair<SDL_Point, SDL_Point>>& riverSegments,
@@ -959,7 +991,8 @@ public:
         }
         Map = std::move(newMap);
     }
-
+    const std::vector<std::pair<int,int>>& GetCapitals() const { return m_capitals; }
 private:
     std::mt19937& m_rng;
+    std::vector<std::pair<int,int>> m_capitals;
 };
