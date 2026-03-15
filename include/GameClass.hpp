@@ -87,9 +87,9 @@ class Game{
                 m_buttonsObjects.emplace_back(
                     m_renderer,m_font,m_buttons[0],
                     m_width, m_height,
-                    m_width-(m_width/10),
+                    m_width-(m_width/20),
                     0,
-                    m_width/10,m_width/10,240,240,240);
+                    m_width/20,m_width/20,210,210,210);
                 float freeWidth = m_width - (Otstup + m_height);
                 float infoW = freeWidth * 0.8f;
                 float infoX = Otstup + m_height + (freeWidth - infoW) / 2;
@@ -109,8 +109,34 @@ class Game{
                     m_renderer, m_font, "Upgrade",
                     m_width, m_height,
                     20, upgrY, upgrW, upgrH,
-                    240, 240, 240
+                    210, 210, 210
                 );
+                float recruitY = upgrY + upgrH + 10;
+                m_recruitButton = std::make_unique<Button>(
+                    m_renderer, m_font, "Recruit",
+                    m_width, m_height,
+                    20, recruitY, upgrW, upgrH,
+                    210, 210, 210
+                );
+                float btnH = m_width / 20;
+                float btnW = m_width / 20;
+                float leftBound = Otstup + m_height;
+                float rightBound = m_width - btnW - 2;
+                float availableWidth = rightBound - leftBound;
+                const float gap = 2;
+                float btnWidth = (availableWidth - 3 * gap) / 4;
+                if (btnWidth < 10) btnWidth = 10;
+
+                const char* speedLabels[4] = { "II", ">", ">>", ">>>" };
+                for (int i = 0; i < 4; ++i) {
+                    float x = leftBound + i * (btnWidth + gap);
+                    m_speedButtons.emplace_back(
+                        m_renderer, m_font, speedLabels[i],
+                        m_width, m_height,
+                        x, 0, btnWidth, btnH,
+                        210, 210, 210
+                    );
+                }
                 CreateMapTexture();
                 //m_atlasTexture = SDL_CreateTextureFromSurface(m_renderer, m_atlasSurface);
                 //if (!m_atlasTexture) {
@@ -194,9 +220,15 @@ class Game{
                     btn.RenderButton();
                 }
             }
+            for (auto& btn : m_speedButtons) {
+                btn.RenderButton();
+            }
             m_infoLabel->Render();
-            if (IsSelectedCapital()) {
-                m_upgradeButton->RenderButton();
+            if (CanRecruit()) {
+                m_recruitButton->RenderButton();
+                if (CanUpgrade()) {
+                    m_upgradeButton->RenderButton();
+                }
             }
         }
 /*       void RenderBuildings() {
@@ -263,7 +295,7 @@ class Game{
             if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
                 int mouseX = static_cast<int>(event.button.x);
                 int mouseY = static_cast<int>(event.button.y);
-                if (IsSelectedCapital() && m_upgradeButton->GetButtonAt(mouseX, mouseY)) {
+                if (CanUpgrade() && m_upgradeButton->GetButtonAt(mouseX, mouseY)) {
                     UpgradeCapital();
                     return;
                 }
@@ -397,17 +429,17 @@ class Game{
         
         void InitButtons(){
             m_buttons={"..."};
-            float btnX = m_width - m_width/10;
+            float btnX = m_width - m_width/20;
             float btnY = 0;
-            float btnW = m_width/10;
-            float btnH = m_width/10;
+            float btnW = m_width/20;
+            float btnH = m_width/20;
             m_menuButtons.emplace_back(
                 m_renderer, m_font, "Exit", m_width, m_height,
                 btnX, btnY + btnH, btnW, btnH,
                 210, 210, 210
             );
             m_menuButtons.emplace_back(
-                m_renderer, m_font, "Settings", m_width, m_height,
+                m_renderer, m_font, "*", m_width, m_height,
                 btnX, btnY + 2*btnH, btnW, btnH,
                 210, 210, 210
             );
@@ -427,7 +459,7 @@ class Game{
         int Otstup=(m_width-m_height)/2;
         int m_atlasTileSize;
         std::vector<std::string>m_buttons;
-        std::vector<Button>m_buttonsObjects;
+        std::vector<Button>m_buttonsObjects, m_speedButtons;
         bool isDragging = false;
         float panX = 0.0f, panY = 0.0f;
         float zoom = 1.0f;
@@ -454,13 +486,19 @@ class Game{
         int m_selX = 0, m_selY = 0;
         std::unique_ptr<Label> m_infoLabel;
         std::unique_ptr<Button> m_upgradeButton;
+        std::unique_ptr<Button> m_recruitButton;
         uint16_t m_playerCapitalX = 0, m_playerCapitalY = 0;
 
-        bool IsSelectedCapital() const {
+        bool CanUpgrade() const {
             return m_hasSelection && 
                 m_selX == m_playerCapitalX && 
                 m_selY == m_playerCapitalY && 
                 Map[m_selY * N + m_selX].buildingLevel < 3;
+        }
+        bool CanRecruit() const {
+            return m_hasSelection && 
+                m_selX == m_playerCapitalX && 
+                m_selY == m_playerCapitalY;
         }
 
         void CreateMapTexture() {
@@ -684,7 +722,7 @@ class Game{
     }
 
     void UpgradeCapital() {
-        if (!IsSelectedCapital()) return;
+        if (!CanUpgrade()) return;
         Tile& tile = Map[m_playerCapitalY * N + m_playerCapitalX];
         int oldLevel = tile.buildingLevel;
         
