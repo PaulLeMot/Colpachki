@@ -56,11 +56,25 @@ class Game{
                 m_generator.DesrtifyJungles(Map, m_riverSegments, N);
                 m_generator.DesrtifyJungles(Map, m_riverSegments, N);
                 m_generator.GenerateMountains(Map, N);
-                m_generator.AdjustMountainZones(Map, N);
+                //m_generator.AdjustMountainZones(Map, N);
                 m_generator.RemoveIsolatedMountains(Map, N);
+                m_generator.AdjustMountainZones(Map, N);
                 m_generator.GenerateForest(Map, m_perm, N);
                 //GenerateRivers();
                 const auto& capitals = m_generator.GetCapitals();
+                m_playerColors.resize(capitals.size());
+                for (size_t i = 0; i < capitals.size(); ++i) {
+                    int x = capitals[i].first;
+                    int y = capitals[i].second;
+                    m_playerColors[i] = Map[y * N + x].capitalColor;
+                    Map[y * N + x].owner = i;
+                }
+                if (!capitals.empty()) {
+                    std::uniform_int_distribution<int> pick(0, capitals.size() - 1);
+                    int idx = pick(m_rng);
+                    m_playerCapitalX = capitals[idx].first;
+                    m_playerCapitalY = capitals[idx].second;
+                }
                 if (!capitals.empty()) {
                     std::uniform_int_distribution<int> pick(0, capitals.size() - 1);
                     int idx = pick(m_rng);
@@ -101,6 +115,14 @@ class Game{
                     0, 0, 0,
                     255, 255, 255 
                 );
+                float unitsY = infoY + infoH + 5;
+                m_unitsLabel = std::make_unique<Label>(
+                    m_renderer, m_font, "",
+                    infoX, unitsY, infoW, infoH,
+                    0, 0, 0,
+                    255, 255, 255
+                );
+                m_unitsLabel->SetActive(false);
                 m_infoLabel->SetActive(false);
                 float upgrW = freeWidth * 0.8f;
                 float upgrY = m_height * 0.75f;
@@ -238,7 +260,67 @@ class Game{
                 }
             }
             SDL_SetRenderClipRect(m_renderer, nullptr);
+for (const auto& mov : m_movements) {
+    if (m_hasSelection && mov.fromX == m_selX && mov.fromY == m_selY) {
+        const float thickness = 5.0f;
+        float worldSizePx = m_height * zoom;
+        float tileSize = (m_height / N) * zoom;
+        float maxDist2 = tileSize * tileSize * 1.5f;
 
+        SDL_FPoint from_base = getTileScreenCenter(mov.fromX, mov.fromY);
+        SDL_FPoint to_base = getTileScreenCenter(mov.toX, mov.toY);
+        for (int dfx = -1; dfx <= 1; ++dfx) {
+            for (int dfy = -1; dfy <= 1; ++dfy) {
+                SDL_FPoint from = { from_base.x + dfx * worldSizePx, from_base.y + dfy * worldSizePx };
+                for (int dtx = -1; dtx <= 1; ++dtx) {
+                    for (int dty = -1; dty <= 1; ++dty) {
+                        SDL_FPoint to = { to_base.x + dtx * worldSizePx, to_base.y + dty * worldSizePx };
+
+                        float dist2 = (to.x - from.x)*(to.x - from.x) + (to.y - from.y)*(to.y - from.y);
+                        if (dist2 > maxDist2) continue;
+
+                        float dx_line = to.x - from.x;
+                        float dy_line = to.y - from.y;
+
+                        if (fabs(dx_line) > fabs(dy_line)) {
+                            float len = fabs(dx_line);
+                            float dir = (dx_line > 0) ? 1.0f : -1.0f;
+                            float y = from.y - thickness/2;
+                            float xStart = std::min(from.x, to.x);
+
+                            SDL_SetRenderDrawColor(m_renderer, 255, 255, 255, 255);
+                            SDL_FRect bgRect = { xStart, y, len, thickness };
+                            SDL_RenderFillRect(m_renderer, &bgRect);
+
+                            float progressX = from.x + dir * (len * mov.progress);
+                            float fillStart = std::min(from.x, progressX);
+                            float fillWidth = fabs(progressX - from.x);
+                            SDL_SetRenderDrawColor(m_renderer, 0, 255, 0, 255);
+                            SDL_FRect fillRect = { fillStart, y, fillWidth, thickness };
+                            SDL_RenderFillRect(m_renderer, &fillRect);
+                        } else {
+                            float len = fabs(dy_line);
+                            float dir = (dy_line > 0) ? 1.0f : -1.0f;
+                            float x = from.x - thickness/2;
+                            float yStart = std::min(from.y, to.y);
+
+                            SDL_SetRenderDrawColor(m_renderer, 255, 255, 255, 255);
+                            SDL_FRect bgRect = { x, yStart, thickness, len };
+                            SDL_RenderFillRect(m_renderer, &bgRect);
+
+                            float progressY = from.y + dir * (len * mov.progress);
+                            float fillStart = std::min(from.y, progressY);
+                            float fillHeight = fabs(progressY - from.y);
+                            SDL_SetRenderDrawColor(m_renderer, 0, 255, 0, 255);
+                            SDL_FRect fillRect = { x, fillStart, thickness, fillHeight };
+                            SDL_RenderFillRect(m_renderer, &fillRect);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
             m_buttonsObjects[0].RenderButton();
             if (m_menuOpen) {
                 for (auto& btn : m_menuButtons) {
@@ -260,6 +342,7 @@ class Game{
                 m_calendarLabel->Render();
             }
             m_infoLabel->Render();
+            m_unitsLabel->Render();
             if (CanRecruit()) {
                 m_recruitButton->RenderButton();
                 if (CanUpgrade()) {
@@ -322,8 +405,19 @@ class Game{
                 std::string info = GetTileInfo(tile);
                 m_infoLabel->SetText(info);
                 m_infoLabel->SetActive(true);
-                if (tile.buildingLevel == 3) {
-                    SDL_Log("Capital RGB: %d %d %d", tile.capitalColor.r, tile.capitalColor.g, tile.capitalColor.b);
+                if (tile.buildingLevel > 0) {
+                    SDL_Log("build RGB: %d %d %d", tile.capitalColor.r, tile.capitalColor.g, tile.capitalColor.b);
+                }
+                if (!tile.units.empty()) {
+                    std::string unitsText = "Units: ";
+                    for (size_t i = 0; i < tile.units.size(); ++i) {
+                        if (i > 0) unitsText += ", ";
+                        unitsText += tile.units[i].id;
+                    }
+                    m_unitsLabel->SetText(unitsText);
+                    m_unitsLabel->SetActive(true);
+                } else {
+                    m_unitsLabel->SetActive(false);
                 }
             }
         }
@@ -331,101 +425,163 @@ class Game{
             if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
                 int mouseX = static_cast<int>(event.button.x);
                 int mouseY = static_cast<int>(event.button.y);
-                if (CanUpgrade() && m_upgradeButton->GetButtonAt(mouseX, mouseY)) {
-                    UpgradeCapital();
-                    return;
-                }
-                if (m_buttonsObjects[0].GetButtonAt(mouseX, mouseY)) {
-                    m_menuOpen = !m_menuOpen;
-                    return;
-                }
 
-                if (m_menuOpen) {
-                    if (m_menuButtons[0].GetButtonAt(mouseX, mouseY)) {
-                        if (m_state) *m_state = 0;
-                        m_menuOpen = false;
-                        return;
-                    }
-                    if (m_menuButtons[1].GetButtonAt(mouseX, mouseY)) {
-                        if (m_settingsMenu) {
-                            m_settingsMenu->SetReturnState(2);
-                            *m_state = 3;
-                        }
-                        m_menuOpen = false;
-                        return;
-                    } else m_menuOpen = 0;
-                }
                 if (event.button.button == SDL_BUTTON_LEFT) {
-                    HandleTileClick(mouseX, mouseY);
-                }
-                for (int i = 0; i < m_speedButtons.size(); ++i) {
-                    if (m_speedButtons[i].GetButtonAt(mouseX, mouseY)) {
-                        switch (i) {
-                            case 0: m_speedMode = 0; break;
-                            case 1: m_speedMode = 1; break;
-                            case 2: m_speedMode = 2; break;
-                            case 3: m_speedMode = 3; break;
-                        }
+                    if (CanUpgrade() && m_upgradeButton->GetButtonAt(mouseX, mouseY)) {
+                        UpgradeCapital();
                         return;
                     }
+                    if (m_buttonsObjects[0].GetButtonAt(mouseX, mouseY)) {
+                        m_menuOpen = !m_menuOpen;
+                        return;
+                    }
+                    if (m_menuOpen) {
+                        if (m_menuButtons[0].GetButtonAt(mouseX, mouseY)) {
+                            if (m_state) *m_state = 0;
+                            m_menuOpen = false;
+                            return;
+                        }
+                        if (m_menuButtons[1].GetButtonAt(mouseX, mouseY)) {
+                            if (m_settingsMenu) {
+                                m_settingsMenu->SetReturnState(2);
+                                *m_state = 3;
+                            }
+                            m_menuOpen = false;
+                            return;
+                        } else {
+                            m_menuOpen = false;
+                        }
+                    }
+                    for (int i = 0; i < m_speedButtons.size(); ++i) {
+                        if (m_speedButtons[i].GetButtonAt(mouseX, mouseY)) {
+                            switch (i) {
+                                case 0: m_speedMode = 0; break;
+                                case 1: m_speedMode = 1; break;
+                                case 2: m_speedMode = 2; break;
+                                case 3: m_speedMode = 3; break;
+                            }
+                            return;
+                        }
+                    }
+                    if (CanRecruit() && m_recruitButton->GetButtonAt(mouseX, mouseY)) {
+                        Recruit();
+                        return;
+                    }
+                    HandleTileClick(mouseX, mouseY);
+                    return;
+                }
+                else if (event.button.button == SDL_BUTTON_RIGHT) {
+                    if (m_hasSelection) {
+                        Tile& srcTile = Map[m_selY * N + m_selX];
+                        if (!srcTile.units.empty()) {
+                            float tileSize = (m_height / N) * zoom;
+                            float worldX = panX + (mouseX - Otstup) / tileSize;
+                            float worldY = panY + mouseY / tileSize;
+                            int ix = static_cast<int>(std::floor(worldX)) % N;
+                            if (ix < 0) ix += N;
+                            int iy = static_cast<int>(std::floor(worldY)) % N;
+                            if (iy < 0) iy += N;
+
+                            if (Map[iy * N + ix].biome == 1) {
+                                SDL_Log("Cannot move to water");
+                                return;
+                            }
+                            if (!Map[iy * N + ix].units.empty()) {
+                                SDL_Log("Target tile already has a unit");
+                                return;
+                            }
+                            if (Map[iy * N + ix].owner != -1 && Map[iy * N + ix].owner != srcTile.owner) {
+                                SDL_Log("Target tile already belongs to another player");
+                                return;
+                            }
+                            if (isTileInMovementAsFrom(m_selX, m_selY)) {
+                                SDL_Log("Source tile is already moving");
+                                return;
+                            }
+                            if (isTileInMovementAsTo(ix, iy)) {
+                                SDL_Log("Target tile is already targeted by another movement");
+                                return;
+                            }
+                            int dx = abs(ix - (int)m_selX);
+                            int dy = abs(iy - (int)m_selY);
+                            dx = std::min(dx, N - dx);
+                            dy = std::min(dy, N - dy);
+                            if (dx + dy != 1) {
+                                SDL_Log("Target is not a neighboring tile");
+                                return;
+                            }
+
+                            Movement mov;
+                            mov.fromX = m_selX;
+                            mov.fromY = m_selY;
+                            mov.toX = ix;
+                            mov.toY = iy;
+                            mov.progress = 0.0f;
+                            m_movements.push_back(mov);
+                            //m_hasSelection = false;
+                            //m_infoLabel->SetActive(false);
+                            SDL_Log("Movement started from (%d,%d) to (%d,%d)",
+                                mov.fromX, mov.fromY, mov.toX, mov.toY);
+                        }
+                    }
+                    return;
+                }
+                else if (event.button.button == SDL_BUTTON_MIDDLE) {
+                    isDragging = true;
+                    startMouseX = event.button.x;
+                    startMouseY = event.button.y;
+                    startPanX = panX;
+                    startPanY = panY;
+                    return;
                 }
             }
-        if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.button == SDL_BUTTON_MIDDLE) {
-            isDragging = true;
-            startMouseX = event.button.x;
-            startMouseY = event.button.y;
-            startPanX = panX;
-            startPanY = panY;
-        }
-        if (event.type == SDL_EVENT_MOUSE_BUTTON_UP && event.button.button == SDL_BUTTON_MIDDLE) {
-            isDragging = false;
-        }
-        if (event.type == SDL_EVENT_MOUSE_MOTION && isDragging) {
-            int mouseX = event.motion.x;
-            int mouseY = event.motion.y;
-            float tileSize = (m_height / N) * zoom;
-        
-            panX = startPanX - (mouseX - startMouseX) / tileSize;
-            panY = startPanY - (mouseY - startMouseY) / tileSize;
-        
-            panX = fmod(panX, (float)N);
-            if (panX < 0) panX += N;
-            panY = fmod(panY, (float)N);
-            if (panY < 0) panY += N;
-        }
-    
-        if (event.type == SDL_EVENT_MOUSE_WHEEL) {
-            float mouseX, mouseY;
-            SDL_GetMouseState(&mouseX, &mouseY);
-            float sens = m_settingsMenu ? m_settingsMenu->GetZoomSensitivity() : 1.0f;
-            float factor = expf(event.wheel.y * m_wheelZoomSpeed * sens);
-            if (factor < 0.1f) factor = 0.1f;
-            ZoomAt(mouseX, mouseY, factor);
-        }
-        if (event.type == SDL_EVENT_KEY_DOWN) {
-            switch (event.key.key) {
-                case SDLK_W: m_upPressed = true; break;
-                case SDLK_S: m_downPressed = true; break;
-                case SDLK_A: m_leftPressed = true; break;
-                case SDLK_D: m_rightPressed = true; break;
-                case SDLK_Z: m_zoomInPressed = true; break;
-                case SDLK_X: m_zoomOutPressed = true; break;
-                case SDLK_ESCAPE:
-                m_hasSelection = false;
-                m_infoLabel->SetActive(false);
-                break;
+            if (event.type == SDL_EVENT_MOUSE_BUTTON_UP && event.button.button == SDL_BUTTON_MIDDLE) {
+                isDragging = false;
             }
-        }
-        if (event.type == SDL_EVENT_KEY_UP) {
-            switch (event.key.key) {
-                case SDLK_W: m_upPressed = false; break;
-                case SDLK_S: m_downPressed = false; break;
-                case SDLK_A: m_leftPressed = false; break;
-                case SDLK_D: m_rightPressed = false; break;
-                case SDLK_Z: m_zoomInPressed = false; break;
-                case SDLK_X: m_zoomOutPressed = false; break;
+            if (event.type == SDL_EVENT_MOUSE_MOTION && isDragging) {
+                int mouseX = event.motion.x;
+                int mouseY = event.motion.y;
+                float tileSize = (m_height / N) * zoom;
+                panX = startPanX - (mouseX - startMouseX) / tileSize;
+                panY = startPanY - (mouseY - startMouseY) / tileSize;
+                panX = fmod(panX, (float)N);
+                if (panX < 0) panX += N;
+                panY = fmod(panY, (float)N);
+                if (panY < 0) panY += N;
             }
-        }
+            if (event.type == SDL_EVENT_MOUSE_WHEEL) {
+                float mouseX, mouseY;
+                SDL_GetMouseState(&mouseX, &mouseY);
+                float sens = m_settingsMenu ? m_settingsMenu->GetZoomSensitivity() : 1.0f;
+                float factor = expf(event.wheel.y * m_wheelZoomSpeed * sens);
+                if (factor < 0.1f) factor = 0.1f;
+                ZoomAt(mouseX, mouseY, factor);
+            }
+            if (event.type == SDL_EVENT_KEY_DOWN) {
+                switch (event.key.key) {
+                    case SDLK_W: m_upPressed = true; break;
+                    case SDLK_S: m_downPressed = true; break;
+                    case SDLK_A: m_leftPressed = true; break;
+                    case SDLK_D: m_rightPressed = true; break;
+                    case SDLK_Z: m_zoomInPressed = true; break;
+                    case SDLK_X: m_zoomOutPressed = true; break;
+                    case SDLK_ESCAPE:
+                        m_hasSelection = false;
+                        m_infoLabel->SetActive(false);
+                        m_unitsLabel->SetActive(false);
+                        break;
+                }
+            }
+            if (event.type == SDL_EVENT_KEY_UP) {
+                switch (event.key.key) {
+                    case SDLK_W: m_upPressed = false; break;
+                    case SDLK_S: m_downPressed = false; break;
+                    case SDLK_A: m_leftPressed = false; break;
+                    case SDLK_D: m_rightPressed = false; break;
+                    case SDLK_Z: m_zoomInPressed = false; break;
+                    case SDLK_X: m_zoomOutPressed = false; break;
+                }
+            }
         }
         void Update(float deltaTime) {
             float moveSpeed = 300.0f / zoom;
@@ -474,6 +630,36 @@ class Game{
                                             " Month " + std::to_string(m_month) +
                                             " Day " + std::to_string(m_day);
                     m_calendarLabel->SetText(calendarText);
+                }
+            }
+            if (!m_movements.empty()) {
+                float speedFactor = 0.0f;
+                if (m_speedMode == 1) speedFactor = 1.0f;
+                else if (m_speedMode == 2) speedFactor = 6.0f;
+                else if (m_speedMode == 3) speedFactor = 12.0f;
+
+                if (speedFactor > 0.0f) {
+                    for (auto it = m_movements.begin(); it != m_movements.end(); ) {
+                        it->progress += deltaTime * speedFactor / MOVE_DURATION_HOURS;
+                        if (it->progress >= 1.0f) {
+                            it->progress = 1.0f;
+                            Tile& srcTile = Map[it->fromY * N + it->fromX];
+                            Tile& dstTile = Map[it->toY * N + it->toX];
+                            dstTile.units = std::move(srcTile.units);
+                            srcTile.units.clear();
+                            dstTile.owner = srcTile.owner;
+                            CreateMapTexture();
+                            SDL_Log("Movement completed: (%d,%d) -> (%d,%d)", it->fromX, it->fromY, it->toX, it->toY);
+                            if (m_hasSelection && m_selX == it->fromX && m_selY == it->fromY) {
+                                m_hasSelection = false;
+                                m_infoLabel->SetActive(false);
+                                m_unitsLabel->SetActive(false);
+                            }
+                            it = m_movements.erase(it);
+                        } else {
+                            ++it;
+                        }
+                    }
                 }
             }
         }
@@ -555,6 +741,7 @@ class Game{
         bool m_hasSelection = false;
         int m_selX = 0, m_selY = 0;
         std::unique_ptr<Label> m_infoLabel;
+        std::unique_ptr<Label> m_unitsLabel;
         std::unique_ptr<Button> m_upgradeButton;
         std::unique_ptr<Button> m_recruitButton;
         uint16_t m_playerCapitalX = 0, m_playerCapitalY = 0;
@@ -567,19 +754,66 @@ class Game{
         int m_month;
         int m_day;
         std::unique_ptr<Label> m_calendarLabel;
-
+        static constexpr float MOVE_DURATION_HOURS = 12.0f;
+        std::vector<SDL_Color> m_playerColors;
+        int m_nextUnitId = 1;
+        struct Movement {
+            int fromX, fromY;
+            int toX, toY;
+            float progress;
+        };
+        std::vector<Movement> m_movements;
+        bool isTileInMovementAsFrom(int x, int y) const {
+            for (const auto& m : m_movements) {
+                if (m.fromX == x && m.fromY == y) return true;
+            }
+            return false;
+        }
+        bool isTileInMovementAsTo(int x, int y) const {
+            for (const auto& m : m_movements) {
+                if (m.toX == x && m.toY == y) return true;
+            }
+            return false;
+        }
         bool CanUpgrade() const {
             return m_hasSelection && 
                 m_selX == m_playerCapitalX && 
                 m_selY == m_playerCapitalY && 
                 Map[m_selY * N + m_selX].buildingLevel < 3;
         }
-        bool CanRecruit() const {
+        bool CanRecruit() const {   
             return m_hasSelection && 
                 m_selX == m_playerCapitalX && 
                 m_selY == m_playerCapitalY;
         }
-
+        void Recruit() {
+            if (!CanRecruit()) return;
+            Tile& tile = Map[m_playerCapitalY * N + m_playerCapitalX];
+            UnitInfo newUnit;
+            newUnit.level = 1;
+            newUnit.id = "U" + std::to_string(m_nextUnitId++);
+            tile.units.push_back(newUnit);
+            CreateMapTexture();
+            if (m_hasSelection && m_selX == m_playerCapitalX && m_selY == m_playerCapitalY) {
+                if (!tile.units.empty()) {
+                    std::string unitsText = "Units: ";
+                    for (size_t i = 0; i < tile.units.size(); ++i) {
+                        if (i > 0) unitsText += ", ";
+                        unitsText += tile.units[i].id;
+                    }
+                    m_unitsLabel->SetText(unitsText);
+                    m_unitsLabel->SetActive(true);
+                } else {
+                    m_unitsLabel->SetActive(false);
+                }
+            }
+        }
+        SDL_FPoint getTileScreenCenter(int tx, int ty) const {
+            float tileSize = (m_height / N) * zoom;
+            float screenX = Otstup + (tx - panX) * tileSize + tileSize/2;
+            float screenY = (ty - panY) * tileSize + tileSize/2;
+            return {screenX, screenY};
+        }
         void CreateMapTexture() {
             if (m_mapTexture) {
                 SDL_DestroyTexture(m_mapTexture);
@@ -719,29 +953,27 @@ class Game{
             for (int i = 0; i < N; ++i) {
                 for (int j = 0; j < N; ++j) {
                     const Tile& tile = Map[i * N + j];
-                    if (tile.capitalColor.a != 0) {
-                        int dstX0 = static_cast<int>(j * baseTileSize);
-                        int dstY0 = static_cast<int>(i * baseTileSize);
-                        Uint8 a_src = 64;
-                        Uint8 r_src = tile.capitalColor.r;
-                        Uint8 g_src = tile.capitalColor.g;
-                        Uint8 b_src = tile.capitalColor.b;
-
-                        for (int y = 0; y < atlasTileSize; ++y) {
-                            for (int x = 0; x < atlasTileSize; ++x) {
-                                Uint32& dstPixel = dstPixels[(dstY0 + y) * dstPitch + (dstX0 + x)];
-                                Uint8 r_dst = (dstPixel >> 24) & 0xFF;
-                                Uint8 g_dst = (dstPixel >> 16) & 0xFF;
-                                Uint8 b_dst = (dstPixel >> 8) & 0xFF;
-                                Uint8 a_dst = dstPixel & 0xFF;
-
-                                float a = a_src / 255.0f;
-                                Uint8 r = static_cast<Uint8>(r_src * a + r_dst * (1.0f - a));
-                                Uint8 g = static_cast<Uint8>(g_src * a + g_dst * (1.0f - a));
-                                Uint8 b = static_cast<Uint8>(b_src * a + b_dst * (1.0f - a));
-                                Uint8 a_out = a_src + a_dst * (1.0f - a);
-                                dstPixel = (r << 24) | (g << 16) | (b << 8) | a_out;
-                            }
+                    if (tile.owner == -1) continue;
+                    SDL_Color color = m_playerColors[tile.owner];
+                    Uint8 a_src = 64;
+                    Uint8 r_src = color.r;
+                    Uint8 g_src = color.g;
+                    Uint8 b_src = color.b;
+                    int dstX0 = static_cast<int>(j * baseTileSize);
+                    int dstY0 = static_cast<int>(i * baseTileSize);
+                    for (int y = 0; y < atlasTileSize; ++y) {
+                        for (int x = 0; x < atlasTileSize; ++x) {
+                            Uint32& dstPixel = dstPixels[(dstY0 + y) * dstPitch + (dstX0 + x)];
+                            Uint8 r_dst = (dstPixel >> 24) & 0xFF;
+                            Uint8 g_dst = (dstPixel >> 16) & 0xFF;
+                            Uint8 b_dst = (dstPixel >> 8) & 0xFF;
+                            Uint8 a_dst = dstPixel & 0xFF;
+                            float a = a_src / 255.0f;
+                            Uint8 r = static_cast<Uint8>(r_src * a + r_dst * (1.0f - a));
+                            Uint8 g = static_cast<Uint8>(g_src * a + g_dst * (1.0f - a));
+                            Uint8 b = static_cast<Uint8>(b_src * a + b_dst * (1.0f - a));
+                            Uint8 a_out = a_src + a_dst * (1.0f - a);
+                            dstPixel = (r << 24) | (g << 16) | (b << 8) | a_out;
                         }
                     }
                 }
@@ -749,29 +981,61 @@ class Game{
 
             int cornerSize = static_cast<int>(baseTileSize / 16.0f + 0.5f);
             int tileSizePx = static_cast<int>(baseTileSize);
+            const int borderThickness = 2;
             for (int i = 0; i < N; ++i) {
                 for (int j = 0; j < N; ++j) {
                     const Tile& tile = Map[i * N + j];
-                    if (tile.capitalColor.a != 0) {
+                    if (tile.owner == -1) continue;
+                    SDL_Color color = m_playerColors[tile.owner];
+                    Uint32 borderColor = (color.r << 24) | (color.g << 16) | (color.b << 8) | 0xFF;
+                    int dstX0 = static_cast<int>(j * baseTileSize);
+                    int dstY0 = static_cast<int>(i * baseTileSize);
+                    int rightX = dstX0 + tileSizePx - 1;
+                    int bottomY = dstY0 + tileSizePx - 1;
+                    int ni = (i - 1 + N) % N;
+                    if (Map[ni * N + j].owner != tile.owner) {
+                        for (int y = dstY0; y < dstY0 + borderThickness; ++y)
+                            for (int x = dstX0; x < dstX0 + tileSizePx; ++x)
+                                dstPixels[y * dstPitch + x] = borderColor;
+                    }
+                    ni = (i + 1) % N;
+                    if (Map[ni * N + j].owner != tile.owner) {
+                        for (int y = bottomY - borderThickness + 1; y <= bottomY; ++y)
+                            for (int x = dstX0; x < dstX0 + tileSizePx; ++x)
+                                dstPixels[y * dstPitch + x] = borderColor;
+                    }
+                    int nj = (j - 1 + N) % N;
+                    if (Map[i * N + nj].owner != tile.owner) {
+                        for (int x = dstX0; x < dstX0 + borderThickness; ++x)
+                            for (int y = dstY0; y < dstY0 + tileSizePx; ++y)
+                                dstPixels[y * dstPitch + x] = borderColor;
+                    }
+                    nj = (j + 1) % N;
+                    if (Map[i * N + nj].owner != tile.owner) {
+                        for (int x = rightX - borderThickness + 1; x <= rightX; ++x)
+                            for (int y = dstY0; y < dstY0 + tileSizePx; ++y)
+                                dstPixels[y * dstPitch + x] = borderColor;
+                    }
+                }
+            }
+            for (int i = 0; i < N; ++i) {
+                for (int j = 0; j < N; ++j) {
+                    const Tile& tile = Map[i * N + j];
+                    if (!tile.units.empty()) {
                         int dstX0 = static_cast<int>(j * baseTileSize);
                         int dstY0 = static_cast<int>(i * baseTileSize);
-                        Uint32 color = (tile.capitalColor.r << 24) |
-                                    (tile.capitalColor.g << 16) |
-                                    (tile.capitalColor.b << 8) |
-                                    0xFF;
-
-                        for (int y = 0; y < cornerSize; ++y)
-                            for (int x = 0; x < tileSizePx; ++x)
-                                dstPixels[(dstY0 + y) * dstPitch + (dstX0 + x)] = color;
-                        for (int y = 0; y < cornerSize; ++y)
-                            for (int x = 0; x < tileSizePx; ++x)
-                                dstPixels[(dstY0 + tileSizePx - cornerSize + y) * dstPitch + (dstX0 + x)] = color;
-                        for (int x = 0; x < cornerSize; ++x)
-                            for (int y = 0; y < tileSizePx; ++y)
-                                dstPixels[(dstY0 + y) * dstPitch + (dstX0 + x)] = color;
-                        for (int x = 0; x < cornerSize; ++x)
-                            for (int y = 0; y < tileSizePx; ++y)
-                                dstPixels[(dstY0 + y) * dstPitch + (dstX0 + tileSizePx - cornerSize + x)] = color;
+                        int unitSrcX0 = (0 + tile.units[0].level) * atlasTileSize;
+                        int unitSrcY0 = 6 * atlasTileSize;
+                        for (int y = 0; y < atlasTileSize; ++y) {
+                            for (int x = 0; x < atlasTileSize; ++x) {
+                                Uint32 srcPixel = srcPixels[(unitSrcY0 + y) * srcPitch + (unitSrcX0 + x)];
+                                Uint32& dstPixel = dstPixels[(dstY0 + y) * dstPitch + (dstX0 + x)];
+                                Uint8 alpha = (srcPixel >> 24) & 0xFF;
+                                if (alpha > 0) {
+                                    dstPixel = srcPixel;
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -781,31 +1045,41 @@ class Game{
                 SDL_SetTextureScaleMode(m_mapTexture, SDL_SCALEMODE_PIXELART);
             }
         }
-    std::string GetTileInfo(const Tile& tile) const {
-        if (tile.biome == 1) return "Waters";
-        std::string info;
-        switch (tile.zone) {
-            case 0: info = "Snowy"; break;
-            case 1: info = "Taiga"; break;
-            case 2: info = "Temperate"; break;
-            case 3: info = "Savanna"; break;
-            case 4: info = "Desert"; break;
-            case 5: info = "Jungle"; break;
-            default: info = "Unknown";
+        std::string GetTileInfo(const Tile& tile) const {
+            if (tile.biome == 1) return "Waters";
+            std::string info;
+            switch (tile.zone) {
+                case 0: info = "Snowy"; break;
+                case 1: info = "Taiga"; break;
+                case 2: info = "Temperate"; break;
+                case 3: info = "Savanna"; break;
+                case 4: info = "Desert"; break;
+                case 5: info = "Jungle"; break;
+                default: info = "Unknown";
+            }
+            if (tile.mountain) info += " Mountains";
+            else if (tile.forest) info += " Forest";
+            else if (tile.zone == 4 && !tile.mountain && !tile.forest) info += "";
+            else info += " Plains";
+            if (tile.owner != -1) {
+                info += " [Player " + std::to_string(tile.owner) + "]";
+            }
+            if (!tile.units.empty()) {
+                info += "\nUnits: ";
+                for (size_t i = 0; i < tile.units.size(); ++i) {
+                    if (i > 0) info += ", ";
+                    info += tile.units[i].id;
+                }
+            }
+            return info;
         }
-        if (tile.mountain) info += " Mountains";
-        else if (tile.forest) info += " Forest";
-        else if (tile.zone == 4 && !tile.mountain && !tile.forest) info += "";
-        else info += " Plains";
-        return info;
-    }
 
     void UpgradeCapital() {
         if (!CanUpgrade()) return;
         Tile& tile = Map[m_playerCapitalY * N + m_playerCapitalX];
         int oldLevel = tile.buildingLevel;
         
-        if (oldLevel == 1) {
+        if (oldLevel == 1) {    
             tile.buildingLevel = 2;
         } else if (oldLevel == 2) {
             tile.buildingLevel = 3;
@@ -835,5 +1109,16 @@ class Game{
         
         CreateMapTexture();
         m_infoLabel->SetText(GetTileInfo(tile));
+        if (!tile.units.empty()) {
+            std::string unitsText = "Units: ";
+            for (size_t i = 0; i < tile.units.size(); ++i) {
+                if (i > 0) unitsText += ", ";
+                unitsText += tile.units[i].id;
+            }
+            m_unitsLabel->SetText(unitsText);
+            m_unitsLabel->SetActive(true);
+        } else {
+            m_unitsLabel->SetActive(false);
+        }
     }
 };

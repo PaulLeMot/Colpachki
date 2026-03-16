@@ -9,6 +9,10 @@
 #include <cstdint>
 #include <numeric>
 
+struct UnitInfo {
+    uint8_t level;
+    std::string id;
+};
 struct Tile {
     uint16_t x, y;
     uint8_t biome;
@@ -17,6 +21,8 @@ struct Tile {
     bool mountain;
     uint8_t buildingLevel;
     SDL_Color capitalColor;
+    std::vector<UnitInfo> units;
+    int8_t owner;
 };
 
 class MapGenerator {
@@ -163,7 +169,7 @@ public:
 
                 Map[i * N + j] = {static_cast<uint16_t>(i), static_cast<uint16_t>(j),
                   static_cast<uint8_t>(biome), static_cast<int8_t>(zone),
-                  false, false, 0, {0,0,0,0}};
+                  false, false, 0, {0,0,0,0}, {}, -1};
             }
         }
         perm = p;
