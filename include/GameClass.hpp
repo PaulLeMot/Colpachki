@@ -17,6 +17,7 @@
 #include "Settings.hpp"
 #include <random>
 #include <algorithm>
+#include <unordered_set>
 #include <MapGenerator.hpp>
 
 class Game{
@@ -138,6 +139,14 @@ class Game{
                 const float gap = 2;
                 float btnWidth = (availableWidth - 3 * gap) / 4;
                 if (btnWidth < 10) btnWidth = 10;
+                float endTurnX = m_width - btnW - 2;
+                float endTurnY = m_height - btnH - 2;
+                m_endTurnButton = std::make_unique<Button>(
+                    m_renderer, m_font, ">",
+                    m_width, m_height,
+                    endTurnX, endTurnY, btnW, btnH,
+                    210, 210, 210
+                );
                 CreateMapTexture();
                 m_atlasTileSize = m_atlasSurface->w / 8;
         }
@@ -207,6 +216,28 @@ class Game{
                 }
             }
             SDL_SetRenderClipRect(m_renderer, nullptr);
+            if (!m_availableMoves.empty()) {
+                float tileSize = (m_height / N) * zoom;
+                float worldSizePx = m_height * zoom;
+                for (const auto& pos : m_availableMoves) {
+                    int tx = pos.first;
+                    int ty = pos.second;
+                    float baseX = Otstup + (tx - panX) * tileSize;
+                    float baseY = (ty - panY) * tileSize;
+                    for (int dx = -1; dx <= 1; ++dx) {
+                        for (int dy = -1; dy <= 1; ++dy) {
+                            float screenX = baseX + dx * worldSizePx;
+                            float screenY = baseY + dy * worldSizePx;
+                            if (screenX + tileSize < 0 || screenX > m_width || 
+                                screenY + tileSize < 0 || screenY > m_height) continue;
+                            SDL_SetRenderDrawBlendMode(m_renderer, SDL_BLENDMODE_BLEND);
+                            SDL_SetRenderDrawColor(m_renderer, 255, 255, 255, 64);
+                            SDL_FRect rect = { screenX, screenY, tileSize, tileSize };
+                            SDL_RenderFillRect(m_renderer, &rect);
+                        }
+                    }
+                }
+            }
             m_buttonsObjects[0].RenderButton();
             if (m_menuOpen) {
                 for (auto& btn : m_menuButtons) {
@@ -215,6 +246,10 @@ class Game{
             }
             m_infoLabel->Render();
             m_unitsLabel->Render();
+            m_endTurnButton->RenderButton();
+            for (auto& btn : m_unitButtons) {
+                btn.RenderButton();
+            }
             if (CanRecruit()) {
                 m_recruitButton->RenderButton();
                 if (CanUpgrade()) {
@@ -245,6 +280,30 @@ class Game{
                     SDL_Log("build RGB: %d %d %d", tile.capitalColor.r, tile.capitalColor.g, tile.capitalColor.b);
                 }
                 if (!tile.units.empty()) {
+                    bool anyCanMove = false;
+                    bool anyInOnce = false;
+                    for (const auto& u : tile.units) {
+                        if (m_movedUnits.find(u.id) == m_movedUnits.end()) {
+                            anyCanMove = true;
+                        }
+                        if (m_movedOnce.find(u.id) != m_movedOnce.end()) {
+                            anyInOnce = true;
+                        }
+                    }
+                    if (!anyInOnce) {
+                        for (const auto& u : tile.units) {
+                            if (m_movedOnce.find(u.id) != m_movedOnce.end()) {
+                                anyInOnce = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (anyCanMove) {
+                        int maxDepth = anyInOnce ? 1 : 2;
+                        computeAvailableMoves(ix, iy, maxDepth);
+                    } else {
+                        m_availableMoves.clear();
+                    }
                     std::string unitsText = "Units: ";
                     for (size_t i = 0; i < tile.units.size(); ++i) {
                         if (i > 0) unitsText += ", ";
@@ -252,8 +311,12 @@ class Game{
                     }
                     m_unitsLabel->SetText(unitsText);
                     m_unitsLabel->SetActive(true);
-                } else {
+                    updateUnitButtons(tile);
+                    m_activeUnitId.clear();
+                }
+                 else {
                     m_unitsLabel->SetActive(false);
+                    m_availableMoves.clear();
                 }
             }
         }
@@ -263,6 +326,37 @@ class Game{
                 int mouseY = static_cast<int>(event.button.y);
 
                 if (event.button.button == SDL_BUTTON_LEFT) {
+                    if (m_endTurnButton && m_endTurnButton->GetButtonAt(mouseX, mouseY)) {
+                        m_movedUnits.clear();
+                        m_movedOnce.clear();
+                        if (m_hasSelection) {
+                            const Tile& tile = Map[m_selY * N + m_selX];
+                            if (!tile.units.empty()) {
+                                computeAvailableMoves(m_selX, m_selY);
+                            } else {
+                                m_availableMoves.clear();
+                            }
+                        }
+                        SDL_Log("New turn started");
+                        return;
+                    }
+                    for (size_t i = 0; i < m_unitButtons.size(); ++i) {
+                        if (m_unitButtons[i].GetButtonAt(mouseX, mouseY)) {
+                            const Tile& tile = Map[m_selY * N + m_selX];
+                            if (i < tile.units.size()) {
+                                m_activeUnitId = tile.units[i].id;
+                                bool canMove = (m_movedUnits.find(m_activeUnitId) == m_movedUnits.end());
+                                if (canMove) {
+                                    bool inOnce = (m_movedOnce.find(m_activeUnitId) != m_movedOnce.end());
+                                    int maxDepth = inOnce ? 1 : 2;
+                                    computeAvailableMoves(m_selX, m_selY, maxDepth);
+                                } else {
+                                    m_availableMoves.clear();
+                                }
+                            }
+                            return;
+                        }
+                    }
                     if (CanUpgrade() && m_upgradeButton->GetButtonAt(mouseX, mouseY)) {
                         UpgradeCapital();
                         return;
@@ -299,6 +393,17 @@ class Game{
                     if (m_hasSelection) {
                         Tile& srcTile = Map[m_selY * N + m_selX];
                         if (!srcTile.units.empty()) {
+                            bool anyCanMove = false;
+                            for (const auto& u : srcTile.units) {
+                                if (m_movedUnits.find(u.id) == m_movedUnits.end()) {
+                                    anyCanMove = true;
+                                    break;
+                                }
+                            }
+                            if (!anyCanMove) {
+                                SDL_Log("All units on this tile have already moved this turn");
+                                return;
+                            }
                             float tileSize = (m_height / N) * zoom;
                             float worldX = panX + (mouseX - Otstup) / tileSize;
                             float worldY = panY + mouseY / tileSize;
@@ -306,37 +411,233 @@ class Game{
                             if (ix < 0) ix += N;
                             int iy = static_cast<int>(std::floor(worldY)) % N;
                             if (iy < 0) iy += N;
+                            bool isAvailable = false;
+                            for (const auto& pos : m_availableMoves) {
+                                if (pos.first == ix && pos.second == iy) {
+                                    isAvailable = true;
+                                    break;
+                                }
+                            }
+                            if (!isAvailable) {
+                                SDL_Log("Target tile is not in available moves");
+                                return;
+                            }
+                            int dx = (ix - m_selX + N) % N;
+                            if (dx > N/2) dx -= N;
+                            int dy = (iy - m_selY + N) % N;
+                            if (dy > N/2) dy -= N;
+                            int dist = abs(dx) + abs(dy);
 
-                            if (Map[iy * N + ix].biome == 1) {
-                                SDL_Log("Cannot move to water");
-                                return;
-                            }
-                            if (!Map[iy * N + ix].units.empty()) {
-                                SDL_Log("Target tile already has a unit");
-                                return;
-                            }
-                            if (Map[iy * N + ix].owner != -1 && Map[iy * N + ix].owner != srcTile.owner) {
-                                SDL_Log("Target tile already belongs to another player");
-                                return;
-                            }
-                            int dx = abs(ix - (int)m_selX);
-                            int dy = abs(iy - (int)m_selY);
-                            dx = std::min(dx, N - dx);
-                            dy = std::min(dy, N - dy);
-                            if (dx + dy != 1) {
-                                SDL_Log("Target is not a neighboring tile");
-                                return;
-                            }
-                            Tile& dstTile = Map[iy * N + ix];
-                            dstTile.units = std::move(srcTile.units);
-                            srcTile.units.clear();
-                            dstTile.owner = srcTile.owner;
-                            CreateMapTexture();
-                            m_hasSelection = false;
-                            m_infoLabel->SetActive(false);
-                            m_unitsLabel->SetActive(false);
+                            if (dist == 1) {
+                                Tile& dstTile = Map[iy * N + ix];
+                                if (!m_activeUnitId.empty()) {
+                                    auto it = std::find_if(srcTile.units.begin(), srcTile.units.end(),
+                                        [this](const UnitInfo& u) { return u.id == m_activeUnitId; });
+                                    if (it == srcTile.units.end()) {
+                                        SDL_Log("Active unit not found on tile");
+                                        return;
+                                    }
+                                    std::string unitId = it->id;
+                                    UnitInfo movedUnit = std::move(*it);
+                                    srcTile.units.erase(it);
+                                    dstTile.units.push_back(std::move(movedUnit));
+                                    dstTile.owner = srcTile.owner;
 
-                            SDL_Log("Unit moved to (%d,%d)", ix, iy);
+                                    bool isSecondStep = (m_movedOnce.find(unitId) != m_movedOnce.end());
+                                    if (isSecondStep) {
+                                        m_movedOnce.erase(unitId);
+                                        m_movedUnits.insert(unitId);
+                                        m_hasSelection = false;
+                                        m_infoLabel->SetActive(false);
+                                        m_unitsLabel->SetActive(false);
+                                        m_availableMoves.clear();
+                                        m_unitButtons.clear();
+                                        CreateMapTexture();
+                                        m_activeUnitId.clear();
+                                        SDL_Log("Unit %s moved to (%d,%d) – second step, turn ended", unitId.c_str(), ix, iy);
+                                    } else {
+                                        m_movedOnce.insert(unitId);
+                                        if (dstTile.forest || dstTile.mountain) {
+                                            m_movedOnce.erase(unitId);
+                                            m_movedUnits.insert(unitId);
+                                            m_hasSelection = false;
+                                            m_infoLabel->SetActive(false);
+                                            m_unitsLabel->SetActive(false);
+                                            m_availableMoves.clear();
+                                            m_unitButtons.clear();
+                                            CreateMapTexture();
+                                            m_activeUnitId.clear();
+                                            SDL_Log("Unit %s moved to (%d,%d) – first step on forest/mountain, turn ended", unitId.c_str(), ix, iy);
+                                        } else {
+                                            m_selX = ix;
+                                            m_selY = iy;
+                                            m_hasSelection = true;
+                                            std::string info = GetTileInfo(dstTile);
+                                            m_infoLabel->SetText(info);
+                                            m_infoLabel->SetActive(true);
+                                            std::string unitsText = "Units: ";
+                                            for (size_t i = 0; i < dstTile.units.size(); ++i) {
+                                                if (i > 0) unitsText += ", ";
+                                                unitsText += dstTile.units[i].id;
+                                            }
+                                            m_unitsLabel->SetText(unitsText);
+                                            m_unitsLabel->SetActive(true);
+                                            if (!dstTile.units.empty()) {
+                                                updateUnitButtons(dstTile);
+                                            } else {
+                                                m_unitButtons.clear();
+                                            }
+                                            computeAvailableMoves(ix, iy, 1);
+                                            CreateMapTexture();
+                                            m_activeUnitId.clear();
+                                            SDL_Log("Unit %s moved to (%d,%d) – first step", unitId.c_str(), ix, iy);
+                                        }
+                                    }
+                                    return;
+                                }
+                                else {
+                                    auto it = srcTile.units.end() - 1;
+                                    std::string unitId = it->id;
+                                    UnitInfo movedUnit = std::move(*it);
+                                    srcTile.units.erase(it);
+                                    dstTile.units.push_back(std::move(movedUnit));
+                                    dstTile.owner = srcTile.owner;
+
+                                    bool isSecondStep = (m_movedOnce.find(unitId) != m_movedOnce.end());
+                                    if (isSecondStep) {
+                                        m_movedOnce.erase(unitId);
+                                        m_movedUnits.insert(unitId);
+                                        m_hasSelection = false;
+                                        m_infoLabel->SetActive(false);
+                                        m_unitsLabel->SetActive(false);
+                                        m_availableMoves.clear();
+                                        m_unitButtons.clear();
+                                        CreateMapTexture();
+                                        SDL_Log("Unit %s moved to (%d,%d) – second step, turn ended", unitId.c_str(), ix, iy);
+                                    } else {
+                                        m_movedOnce.insert(unitId);
+                                        if (dstTile.forest || dstTile.mountain) {
+                                            m_movedOnce.erase(unitId);
+                                            m_movedUnits.insert(unitId);
+                                            m_hasSelection = false;
+                                            m_infoLabel->SetActive(false);
+                                            m_unitsLabel->SetActive(false);
+                                            m_availableMoves.clear();
+                                            m_unitButtons.clear();
+                                            CreateMapTexture();
+                                            SDL_Log("Unit %s moved to (%d,%d) – first step on forest/mountain, turn ended", unitId.c_str(), ix, iy);
+                                        } else {
+                                            m_selX = ix;
+                                            m_selY = iy;
+                                            m_hasSelection = true;
+                                            std::string info = GetTileInfo(dstTile);
+                                            m_infoLabel->SetText(info);
+                                            m_infoLabel->SetActive(true);
+                                            std::string unitsText = "Units: ";
+                                            for (size_t i = 0; i < dstTile.units.size(); ++i) {
+                                                if (i > 0) unitsText += ", ";
+                                                unitsText += dstTile.units[i].id;
+                                            }
+                                            m_unitsLabel->SetText(unitsText);
+                                            m_unitsLabel->SetActive(true);
+                                            if (!dstTile.units.empty()) {
+                                                updateUnitButtons(dstTile);
+                                            } else {
+                                                m_unitButtons.clear();
+                                            }
+                                            computeAvailableMoves(ix, iy, 1);
+                                            CreateMapTexture();
+                                            SDL_Log("Unit %s moved to (%d,%d) – first step", unitId.c_str(), ix, iy);
+                                        }
+                                    }
+                                }
+                            }
+                            else if (dist == 2) {
+                                int midX = -1, midY = -1;
+                                if (dx != 0 && dy != 0) {
+                                    int candidates[2][2] = {
+                                        { (m_selX + (dx > 0 ? 1 : -1)), m_selY },
+                                        { m_selX, (m_selY + (dy > 0 ? 1 : -1)) }
+                                    };
+                                    for (int i = 0; i < 2; ++i) {
+                                        int tx = (candidates[i][0] + N) % N;
+                                        int ty = (candidates[i][1] + N) % N;
+                                        if (Map[ty * N + tx].biome != 1 && Map[ty * N + tx].units.empty()
+                                            && !Map[ty * N + tx].forest && !Map[ty * N + tx].mountain) {
+                                            midX = tx;
+                                            midY = ty;
+                                            if (i == 0) break;
+                                        }
+                                    }
+                                } else {
+                                    if (dx != 0) {
+                                        midX = (m_selX + (dx > 0 ? 1 : -1) + N) % N;
+                                        midY = m_selY;
+                                    } else {
+                                        midX = m_selX;
+                                        midY = (m_selY + (dy > 0 ? 1 : -1) + N) % N;
+                                    }
+                                    if (Map[midY * N + midX].biome == 1 || !Map[midY * N + midX].units.empty()
+                                        || Map[midY * N + midX].forest || Map[midY * N + midX].mountain) {
+                                        SDL_Log("Intermediate tile is blocked");
+                                        return;
+                                    }
+                                }
+
+                                if (midX == -1 || midY == -1) {
+                                    SDL_Log("No valid intermediate tile found");
+                                    return;
+                                }
+
+                                UnitInfo selectedUnit;
+                                std::string selectedId;
+                                if (!m_activeUnitId.empty()) {
+                                    auto it = std::find_if(srcTile.units.begin(), srcTile.units.end(),
+                                        [&](const UnitInfo& u) { return u.id == m_activeUnitId; });
+                                    if (it == srcTile.units.end()) {
+                                        SDL_Log("Active unit not found on source tile");
+                                        return;
+                                    }
+                                    selectedUnit = std::move(*it);
+                                    selectedId = m_activeUnitId;
+                                    srcTile.units.erase(it);
+                                } else {
+                                    selectedUnit = std::move(srcTile.units.back());
+                                    selectedId = selectedUnit.id;
+                                    srcTile.units.pop_back();
+                                }
+
+                                Tile& midTile = Map[midY * N + midX];
+                                midTile.units.push_back(std::move(selectedUnit));
+                                midTile.owner = srcTile.owner;
+                                CreateMapTexture();
+
+                                auto it2 = std::find_if(midTile.units.begin(), midTile.units.end(),
+                                    [&](const UnitInfo& u) { return u.id == selectedId; });
+                                if (it2 == midTile.units.end()) {
+                                    SDL_Log("Unit lost on intermediate tile");
+                                    return;
+                                }
+
+                                UnitInfo finalUnit = std::move(*it2);
+                                midTile.units.erase(it2);
+                                Tile& dstTile = Map[iy * N + ix];
+                                dstTile.units.push_back(std::move(finalUnit));
+                                dstTile.owner = midTile.owner;
+                                CreateMapTexture();
+
+                                m_movedUnits.insert(selectedId);
+                                m_movedOnce.erase(selectedId);
+
+                                m_activeUnitId.clear();
+                                m_hasSelection = false;
+                                m_infoLabel->SetActive(false);
+                                m_unitsLabel->SetActive(false);
+                                m_availableMoves.clear();
+                                m_unitButtons.clear();
+
+                                SDL_Log("Unit %s moved 2 tiles to (%d,%d) via (%d,%d)", selectedId.c_str(), ix, iy, midX, midY);
+                            }
                         }
                     }
                     return;
@@ -382,8 +683,11 @@ class Game{
                     case SDLK_X: m_zoomOutPressed = true; break;
                     case SDLK_ESCAPE:
                         m_hasSelection = false;
+                        m_availableMoves.clear();
                         m_infoLabel->SetActive(false);
                         m_unitsLabel->SetActive(false);
+                        m_unitButtons.clear();
+                        m_activeUnitId.clear();
                         break;
                 }
             }
@@ -509,6 +813,79 @@ class Game{
         uint16_t m_playerCapitalX = 0, m_playerCapitalY = 0;
         std::vector<SDL_Color> m_playerColors;
         int m_nextUnitId = 1;
+        std::vector<std::pair<int,int>> m_availableMoves;
+        std::unordered_set<std::string> m_movedUnits;
+        std::unique_ptr<Button> m_endTurnButton;
+        std::unordered_set<std::string> m_movedOnce;
+        std::vector<Button> m_unitButtons;
+        std::string m_activeUnitId;
+        void updateUnitButtons(const Tile& tile) {
+            m_unitButtons.clear();
+            if (!m_hasSelection || tile.units.empty()) return;
+
+            float freeWidth = m_width - (Otstup + m_height);
+            float infoW = freeWidth * 0.8f;
+            float infoX = Otstup + m_height + (freeWidth - infoW) / 2;
+            float infoY = m_height * 0.75f;
+            float infoH = 30.0f;
+
+            float startX = Otstup + m_height + 10;
+            float startY = infoY + infoH + 10;
+            const float buttonSize = 40.0f;
+            const int cols = 4;
+
+            int rows = (tile.units.size() + cols - 1) / cols;
+            float gridWidth = cols * buttonSize;
+            float gridStartX = startX + (freeWidth - gridWidth) / 2;
+
+            for (size_t i = 0; i < tile.units.size(); ++i) {
+                int col = i % cols;
+                int row = i / cols;
+                float x = gridStartX + col * buttonSize;
+                float y = startY + row * buttonSize;
+
+                m_unitButtons.emplace_back(
+                    m_renderer, m_font, tile.units[i].id.c_str(),
+                    m_width, m_height,
+                    x, y, buttonSize, buttonSize,
+                    200, 200, 200
+                );
+            }
+        }
+        void computeAvailableMoves(int x, int y, int maxDepth = 2) {
+            m_availableMoves.clear();
+            const Tile& startTile = Map[y * N + x];
+            if (startTile.units.empty()) return;
+
+            int dirs[4][2] = {{-1,0},{1,0},{0,-1},{0,1}};
+            for (int d = 0; d < 4; ++d) {
+                int nx = (x + dirs[d][0] + N) % N;
+                int ny = (y + dirs[d][1] + N) % N;
+                if (Map[ny * N + nx].biome == 1) continue;
+                if (!Map[ny * N + nx].units.empty()) continue;
+                m_availableMoves.emplace_back(nx, ny);
+
+                if (maxDepth >= 2 && !Map[ny * N + nx].forest && !Map[ny * N + nx].mountain) {
+                    for (int d2 = 0; d2 < 4; ++d2) {
+                        int n2x = (nx + dirs[d2][0] + N) % N;
+                        int n2y = (ny + dirs[d2][1] + N) % N;
+                        if (n2x == x && n2y == y) continue;
+                        if (Map[n2y * N + n2x].biome == 1) continue;
+                        if (!Map[n2y * N + n2x].units.empty()) continue;
+                        bool already = false;
+                        for (const auto& pos : m_availableMoves) {
+                            if (pos.first == n2x && pos.second == n2y) {
+                                already = true;
+                                break;
+                            }
+                        }
+                        if (!already) {
+                            m_availableMoves.emplace_back(n2x, n2y);
+                        }
+                    }
+                }
+            }
+        }
         bool CanUpgrade() const {
             return m_hasSelection && 
                 m_selX == m_playerCapitalX && 
@@ -529,17 +906,8 @@ class Game{
             tile.units.push_back(newUnit);
             CreateMapTexture();
             if (m_hasSelection && m_selX == m_playerCapitalX && m_selY == m_playerCapitalY) {
-                if (!tile.units.empty()) {
-                    std::string unitsText = "Units: ";
-                    for (size_t i = 0; i < tile.units.size(); ++i) {
-                        if (i > 0) unitsText += ", ";
-                        unitsText += tile.units[i].id;
-                    }
-                    m_unitsLabel->SetText(unitsText);
-                    m_unitsLabel->SetActive(true);
-                } else {
-                    m_unitsLabel->SetActive(false);
-                }
+                const Tile& tile = Map[m_selY * N + m_selX];
+                updateUnitButtons(tile);
             }
         }
         SDL_FPoint getTileScreenCenter(int tx, int ty) const {
