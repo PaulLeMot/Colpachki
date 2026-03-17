@@ -47,20 +47,10 @@ class Game{
                     }
                 }
                 m_generator.CreateMap(Map, m_heightMap, m_perm, N);
-                //m_generator.SmoothClimate(Map, N, 2 + (N / 256));
-                //m_generator.ApplyCoastalInfluence(Map, N, 1);
                 m_generator.GenerateCapitals(Map, N);
-                //m_generator.GenerateRivers(Map, m_heightMap, m_riverSegments, N);
-                //m_generator.DesrtifyJungles(Map, m_riverSegments, N);
-                //m_generator.JungleifyDeserts(Map, N);
-                //m_generator.DesrtifyJungles(Map, m_riverSegments, N);
-                //m_generator.DesrtifyJungles(Map, m_riverSegments, N);
                 m_generator.GenerateMountains(Map, N);
-                //m_generator.AdjustMountainZones(Map, N);
                 m_generator.RemoveIsolatedMountains(Map, N);
-                //m_generator.AdjustMountainZones(Map, N);
                 m_generator.GenerateForest(Map, m_perm, N);
-                //GenerateRivers();
                 const auto& capitals = m_generator.GetCapitals();
                 m_playerColors.resize(capitals.size());
                 for (size_t i = 0; i < capitals.size(); ++i) {
@@ -148,50 +138,7 @@ class Game{
                 const float gap = 2;
                 float btnWidth = (availableWidth - 3 * gap) / 4;
                 if (btnWidth < 10) btnWidth = 10;
-
-                /*const char* speedLabels[4] = { "II", ">", ">>", ">>>" };
-                for (int i = 0; i < 4; ++i) {
-                    float x = leftBound + i * (btnWidth + gap);
-                    m_speedButtons.emplace_back(
-                        m_renderer, m_font, speedLabels[i],
-                        m_width, m_height,
-                        x, 0, btnWidth, btnH,
-                        210, 210, 210
-                    );
-                }
-                m_gameTimeHours = 0.0f;
-                m_speedMode = 0;
-                float progressBarY = btnH + 5 + btnH;
-                float progressBarX = Otstup + m_height;
-                float progressBarW = (m_width - m_width/20 - 2) - progressBarX;
-                m_progressBarX = progressBarX;
-                m_progressBarY = progressBarY;
-                m_progressBarW = progressBarW;
-                m_progressBarH = 10;
-                m_year = 0;
-                m_month = 1;
-                m_day = 1;
-                float calendarY = btnH + 5;
-                float calendarX = Otstup + m_height;
-                float calendarW = m_progressBarW;
-                float calendarH = btnH * 0.6f;
-
-                m_calendarLabel = std::make_unique<Label>(
-                    m_renderer, m_font,
-                    "Year 0 Month 1 Day 1",
-                    calendarX, calendarY, calendarW, calendarH,
-                    0, 0, 0,
-                    240, 240, 240
-                );
-                m_calendarLabel->SetActive(true);*/
                 CreateMapTexture();
-                //m_atlasTexture = SDL_CreateTextureFromSurface(m_renderer, m_atlasSurface);
-                //if (!m_atlasTexture) {
-                //    SDL_Log("Failed to create atlas texture: %s", SDL_GetError());
-                //}
-                //if (m_atlasTexture) {
-                //    SDL_SetTextureScaleMode(m_atlasTexture, SDL_SCALEMODE_PIXELART);
-                //}
                 m_atlasTileSize = m_atlasSurface->w / 8;
         }
         ~Game() {
@@ -260,88 +207,12 @@ class Game{
                 }
             }
             SDL_SetRenderClipRect(m_renderer, nullptr);
-/*for (const auto& mov : m_movements) {
-    if (m_hasSelection && mov.fromX == m_selX && mov.fromY == m_selY) {
-        const float thickness = 5.0f;
-        float worldSizePx = m_height * zoom;
-        float tileSize = (m_height / N) * zoom;
-        float maxDist2 = tileSize * tileSize * 1.5f;
-
-        SDL_FPoint from_base = getTileScreenCenter(mov.fromX, mov.fromY);
-        SDL_FPoint to_base = getTileScreenCenter(mov.toX, mov.toY);
-        for (int dfx = -1; dfx <= 1; ++dfx) {
-            for (int dfy = -1; dfy <= 1; ++dfy) {
-                SDL_FPoint from = { from_base.x + dfx * worldSizePx, from_base.y + dfy * worldSizePx };
-                for (int dtx = -1; dtx <= 1; ++dtx) {
-                    for (int dty = -1; dty <= 1; ++dty) {
-                        SDL_FPoint to = { to_base.x + dtx * worldSizePx, to_base.y + dty * worldSizePx };
-
-                        float dist2 = (to.x - from.x)*(to.x - from.x) + (to.y - from.y)*(to.y - from.y);
-                        if (dist2 > maxDist2) continue;
-
-                        float dx_line = to.x - from.x;
-                        float dy_line = to.y - from.y;
-
-                        if (fabs(dx_line) > fabs(dy_line)) {
-                            float len = fabs(dx_line);
-                            float dir = (dx_line > 0) ? 1.0f : -1.0f;
-                            float y = from.y - thickness/2;
-                            float xStart = std::min(from.x, to.x);
-
-                            SDL_SetRenderDrawColor(m_renderer, 255, 255, 255, 255);
-                            SDL_FRect bgRect = { xStart, y, len, thickness };
-                            SDL_RenderFillRect(m_renderer, &bgRect);
-
-                            float progressX = from.x + dir * (len * mov.progress);
-                            float fillStart = std::min(from.x, progressX);
-                            float fillWidth = fabs(progressX - from.x);
-                            SDL_SetRenderDrawColor(m_renderer, 0, 255, 0, 255);
-                            SDL_FRect fillRect = { fillStart, y, fillWidth, thickness };
-                            SDL_RenderFillRect(m_renderer, &fillRect);
-                        } else {
-                            float len = fabs(dy_line);
-                            float dir = (dy_line > 0) ? 1.0f : -1.0f;
-                            float x = from.x - thickness/2;
-                            float yStart = std::min(from.y, to.y);
-
-                            SDL_SetRenderDrawColor(m_renderer, 255, 255, 255, 255);
-                            SDL_FRect bgRect = { x, yStart, thickness, len };
-                            SDL_RenderFillRect(m_renderer, &bgRect);
-
-                            float progressY = from.y + dir * (len * mov.progress);
-                            float fillStart = std::min(from.y, progressY);
-                            float fillHeight = fabs(progressY - from.y);
-                            SDL_SetRenderDrawColor(m_renderer, 0, 255, 0, 255);
-                            SDL_FRect fillRect = { x, fillStart, thickness, fillHeight };
-                            SDL_RenderFillRect(m_renderer, &fillRect);
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-    */
             m_buttonsObjects[0].RenderButton();
             if (m_menuOpen) {
                 for (auto& btn : m_menuButtons) {
                     btn.RenderButton();
                 }
             }
-            /*for (auto& btn : m_speedButtons) {
-                btn.RenderButton();
-            }
-            SDL_SetRenderDrawColor(m_renderer, 240, 240, 240, 255);
-            SDL_FRect bgRect = { m_progressBarX, m_progressBarY, m_progressBarW, m_progressBarH };
-            SDL_RenderFillRect(m_renderer, &bgRect);
-
-            float fillWidth = (m_gameTimeHours / 24.0f) * m_progressBarW;
-            SDL_SetRenderDrawColor(m_renderer, 0, 210, 0, 255);
-            SDL_FRect fillRect = { m_progressBarX, m_progressBarY, fillWidth, m_progressBarH };
-            SDL_RenderFillRect(m_renderer, &fillRect);
-            if (m_calendarLabel) {
-                m_calendarLabel->Render();
-            }*/
             m_infoLabel->Render();
             m_unitsLabel->Render();
             if (CanRecruit()) {
@@ -351,42 +222,6 @@ class Game{
                 }
             }
         }
-/*       void RenderBuildings() {
-            float tileSize = (m_height / N) * zoom;
-
-            float worldLeft   = panX - Otstup / tileSize;
-            float worldRight  = worldLeft + m_width / tileSize;
-            float worldTop    = panY;
-            float worldBottom = panY + m_height / tileSize;
-
-            int startJ = static_cast<int>(std::floor(worldLeft));
-            int endJ   = static_cast<int>(std::ceil(worldRight));
-            int startI = static_cast<int>(std::floor(worldTop));
-            int endI   = static_cast<int>(std::ceil(worldBottom));
-
-            for (int i = startI; i < endI; ++i) {
-                for (int j = startJ; j < endJ; ++j) {
-                    int ii = i % N;
-                    if (ii < 0) ii += N;
-                    int jj = j % N;
-                    if (jj < 0) jj += N;
-
-                    const Tile& tile = Map[ii * N + jj];
-                    if (tile.buildingLevel == 0) continue;
-
-                    float screenX = Otstup + (j - panX) * tileSize;
-                    float screenY = (i - panY) * tileSize;
-
-                    int srcX0 = (2 + tile.buildingLevel) * m_atlasTileSize;
-                    int srcY0 = (tile.zone >= 0) ? tile.zone * m_atlasTileSize : 0;
-
-                    SDL_FRect srcRect = { (float)srcX0, (float)srcY0, (float)m_atlasTileSize, (float)m_atlasTileSize };
-                    SDL_FRect dstRect = { screenX, screenY, tileSize, tileSize };
-
-                    SDL_RenderTexture(m_renderer, m_atlasTexture, &srcRect, &dstRect);
-                }
-            }
-        }*/
 
         void HandleTileClick(int mouseX, int mouseY) {
             if (mouseX >= Otstup && mouseX <= Otstup + m_height && mouseY >= 0 && mouseY <= m_height) {
@@ -453,17 +288,6 @@ class Game{
                             m_menuOpen = false;
                         }
                     }
-                    /*for (int i = 0; i < m_speedButtons.size(); ++i) {
-                        if (m_speedButtons[i].GetButtonAt(mouseX, mouseY)) {
-                            switch (i) {
-                                case 0: m_speedMode = 0; break;
-                                case 1: m_speedMode = 1; break;
-                                case 2: m_speedMode = 2; break;
-                                case 3: m_speedMode = 3; break;
-                            }
-                            return;
-                        }
-                    }*/
                     if (CanRecruit() && m_recruitButton->GetButtonAt(mouseX, mouseY)) {
                         Recruit();
                         return;
@@ -600,59 +424,6 @@ class Game{
                     ZoomAt(m_width/2.0f, m_height/2.0f, factor);
                 }
             }
-            /*if (m_speedMode != 0) {
-                float speedFactor = 1.0f;
-                if (m_speedMode == 2) speedFactor = 6.0f;
-                else if (m_speedMode == 3) speedFactor = 12.0f;
-                m_gameTimeHours += deltaTime * speedFactor;
-
-                if (m_gameTimeHours >= 24.0f) {
-                    m_gameTimeHours = fmod(m_gameTimeHours, 24.0f);
-                    m_day++;
-                    if (m_day > 30) {
-                        m_day = 1;
-                        m_month++;
-                        if (m_month > 12) {
-                            m_month = 1;
-                            m_year++;
-                        }
-                    }
-                    std::string calendarText = "Year " + std::to_string(m_year) +
-                                            " Month " + std::to_string(m_month) +
-                                            " Day " + std::to_string(m_day);
-                    m_calendarLabel->SetText(calendarText);
-                }
-            }
-            if (!m_movements.empty()) {
-                float speedFactor = 0.0f;
-                if (m_speedMode == 1) speedFactor = 1.0f;
-                else if (m_speedMode == 2) speedFactor = 6.0f;
-                else if (m_speedMode == 3) speedFactor = 12.0f;
-
-                if (speedFactor > 0.0f) {
-                    for (auto it = m_movements.begin(); it != m_movements.end(); ) {
-                        it->progress += deltaTime * speedFactor / MOVE_DURATION_HOURS;
-                        if (it->progress >= 1.0f) {
-                            it->progress = 1.0f;
-                            Tile& srcTile = Map[it->fromY * N + it->fromX];
-                            Tile& dstTile = Map[it->toY * N + it->toX];
-                            dstTile.units = std::move(srcTile.units);
-                            srcTile.units.clear();
-                            dstTile.owner = srcTile.owner;
-                            CreateMapTexture();
-                            SDL_Log("Movement completed: (%d,%d) -> (%d,%d)", it->fromX, it->fromY, it->toX, it->toY);
-                            if (m_hasSelection && m_selX == it->fromX && m_selY == it->fromY) {
-                                m_hasSelection = false;
-                                m_infoLabel->SetActive(false);
-                                m_unitsLabel->SetActive(false);
-                            }
-                            it = m_movements.erase(it);
-                        } else {
-                            ++it;
-                        }
-                    }
-                }
-            }*/
         }
 
         void ZoomAt(float mouseX, float mouseY, float factor) {
@@ -736,37 +507,8 @@ class Game{
         std::unique_ptr<Button> m_upgradeButton;
         std::unique_ptr<Button> m_recruitButton;
         uint16_t m_playerCapitalX = 0, m_playerCapitalY = 0;
-        /*time
-        float m_gameTimeHours;
-        int m_speedMode;
-        float m_progressBarX, m_progressBarY, m_progressBarW, m_progressBarH;
-        //calendar
-        int m_year;
-        int m_month;
-        int m_day;
-        std::unique_ptr<Label> m_calendarLabel;
-        static constexpr float MOVE_DURATION_HOURS = 12.0f;
-        */
         std::vector<SDL_Color> m_playerColors;
         int m_nextUnitId = 1;
-        /*struct Movement {
-            int fromX, fromY;
-            int toX, toY;
-            float progress;
-        };
-        std::vector<Movement> m_movements;
-        bool isTileInMovementAsFrom(int x, int y) const {
-            for (const auto& m : m_movements) {
-                if (m.fromX == x && m.fromY == y) return true;
-            }
-            return false;
-        }
-        bool isTileInMovementAsTo(int x, int y) const {
-            for (const auto& m : m_movements) {
-                if (m.toX == x && m.toY == y) return true;
-            }
-            return false;
-        }*/
         bool CanUpgrade() const {
             return m_hasSelection && 
                 m_selX == m_playerCapitalX && 
