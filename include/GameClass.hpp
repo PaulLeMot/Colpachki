@@ -831,7 +831,7 @@ for (const auto& mov : m_movements) {
             Uint32* srcPixels = (Uint32*)m_atlasSurface->pixels;
             int srcPitch = m_atlasSurface->pitch / 4;
             int atlasTileSize = m_atlasSurface->w / 8;
-
+            #pragma omp parallel for
             for (int i = 0; i < N; ++i) {
                 for (int j = 0; j < N; ++j) {
                     const Tile& tile = Map[i * N + j];
@@ -927,7 +927,7 @@ for (const auto& mov : m_movements) {
                     }
                 }
             }
-
+            #pragma omp parallel for
             for (int i = 0; i < N; ++i) {
                 for (int j = 0; j < N; ++j) {
                     const Tile& tile = Map[i * N + j];
@@ -950,6 +950,7 @@ for (const auto& mov : m_movements) {
                     }
                 }
             }
+            #pragma omp parallel for
             for (int i = 0; i < N; ++i) {
                 for (int j = 0; j < N; ++j) {
                     const Tile& tile = Map[i * N + j];
@@ -982,6 +983,7 @@ for (const auto& mov : m_movements) {
             int cornerSize = static_cast<int>(baseTileSize / 16.0f + 0.5f);
             int tileSizePx = static_cast<int>(baseTileSize);
             const int borderThickness = 2;
+            #pragma omp parallel for
             for (int i = 0; i < N; ++i) {
                 for (int j = 0; j < N; ++j) {
                     const Tile& tile = Map[i * N + j];
