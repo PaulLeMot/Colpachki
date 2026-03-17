@@ -47,18 +47,18 @@ class Game{
                     }
                 }
                 m_generator.CreateMap(Map, m_heightMap, m_perm, N);
-                m_generator.SmoothClimate(Map, N, 2 + (N / 256));
-                m_generator.ApplyCoastalInfluence(Map, N, 1);
+                //m_generator.SmoothClimate(Map, N, 2 + (N / 256));
+                //m_generator.ApplyCoastalInfluence(Map, N, 1);
                 m_generator.GenerateCapitals(Map, N);
-                m_generator.GenerateRivers(Map, m_heightMap, m_riverSegments, N);
-                m_generator.DesrtifyJungles(Map, m_riverSegments, N);
-                m_generator.JungleifyDeserts(Map, N);
-                m_generator.DesrtifyJungles(Map, m_riverSegments, N);
-                m_generator.DesrtifyJungles(Map, m_riverSegments, N);
+                //m_generator.GenerateRivers(Map, m_heightMap, m_riverSegments, N);
+                //m_generator.DesrtifyJungles(Map, m_riverSegments, N);
+                //m_generator.JungleifyDeserts(Map, N);
+                //m_generator.DesrtifyJungles(Map, m_riverSegments, N);
+                //m_generator.DesrtifyJungles(Map, m_riverSegments, N);
                 m_generator.GenerateMountains(Map, N);
                 //m_generator.AdjustMountainZones(Map, N);
                 m_generator.RemoveIsolatedMountains(Map, N);
-                m_generator.AdjustMountainZones(Map, N);
+                //m_generator.AdjustMountainZones(Map, N);
                 m_generator.GenerateForest(Map, m_perm, N);
                 //GenerateRivers();
                 const auto& capitals = m_generator.GetCapitals();
@@ -149,7 +149,7 @@ class Game{
                 float btnWidth = (availableWidth - 3 * gap) / 4;
                 if (btnWidth < 10) btnWidth = 10;
 
-                const char* speedLabels[4] = { "II", ">", ">>", ">>>" };
+                /*const char* speedLabels[4] = { "II", ">", ">>", ">>>" };
                 for (int i = 0; i < 4; ++i) {
                     float x = leftBound + i * (btnWidth + gap);
                     m_speedButtons.emplace_back(
@@ -183,7 +183,7 @@ class Game{
                     0, 0, 0,
                     240, 240, 240
                 );
-                m_calendarLabel->SetActive(true);
+                m_calendarLabel->SetActive(true);*/
                 CreateMapTexture();
                 //m_atlasTexture = SDL_CreateTextureFromSurface(m_renderer, m_atlasSurface);
                 //if (!m_atlasTexture) {
@@ -260,7 +260,7 @@ class Game{
                 }
             }
             SDL_SetRenderClipRect(m_renderer, nullptr);
-for (const auto& mov : m_movements) {
+/*for (const auto& mov : m_movements) {
     if (m_hasSelection && mov.fromX == m_selX && mov.fromY == m_selY) {
         const float thickness = 5.0f;
         float worldSizePx = m_height * zoom;
@@ -321,13 +321,14 @@ for (const auto& mov : m_movements) {
         }
     }
 }
+    */
             m_buttonsObjects[0].RenderButton();
             if (m_menuOpen) {
                 for (auto& btn : m_menuButtons) {
                     btn.RenderButton();
                 }
             }
-            for (auto& btn : m_speedButtons) {
+            /*for (auto& btn : m_speedButtons) {
                 btn.RenderButton();
             }
             SDL_SetRenderDrawColor(m_renderer, 240, 240, 240, 255);
@@ -340,7 +341,7 @@ for (const auto& mov : m_movements) {
             SDL_RenderFillRect(m_renderer, &fillRect);
             if (m_calendarLabel) {
                 m_calendarLabel->Render();
-            }
+            }*/
             m_infoLabel->Render();
             m_unitsLabel->Render();
             if (CanRecruit()) {
@@ -452,7 +453,7 @@ for (const auto& mov : m_movements) {
                             m_menuOpen = false;
                         }
                     }
-                    for (int i = 0; i < m_speedButtons.size(); ++i) {
+                    /*for (int i = 0; i < m_speedButtons.size(); ++i) {
                         if (m_speedButtons[i].GetButtonAt(mouseX, mouseY)) {
                             switch (i) {
                                 case 0: m_speedMode = 0; break;
@@ -462,7 +463,7 @@ for (const auto& mov : m_movements) {
                             }
                             return;
                         }
-                    }
+                    }*/
                     if (CanRecruit() && m_recruitButton->GetButtonAt(mouseX, mouseY)) {
                         Recruit();
                         return;
@@ -494,14 +495,6 @@ for (const auto& mov : m_movements) {
                                 SDL_Log("Target tile already belongs to another player");
                                 return;
                             }
-                            if (isTileInMovementAsFrom(m_selX, m_selY)) {
-                                SDL_Log("Source tile is already moving");
-                                return;
-                            }
-                            if (isTileInMovementAsTo(ix, iy)) {
-                                SDL_Log("Target tile is already targeted by another movement");
-                                return;
-                            }
                             int dx = abs(ix - (int)m_selX);
                             int dy = abs(iy - (int)m_selY);
                             dx = std::min(dx, N - dx);
@@ -510,18 +503,16 @@ for (const auto& mov : m_movements) {
                                 SDL_Log("Target is not a neighboring tile");
                                 return;
                             }
+                            Tile& dstTile = Map[iy * N + ix];
+                            dstTile.units = std::move(srcTile.units);
+                            srcTile.units.clear();
+                            dstTile.owner = srcTile.owner;
+                            CreateMapTexture();
+                            m_hasSelection = false;
+                            m_infoLabel->SetActive(false);
+                            m_unitsLabel->SetActive(false);
 
-                            Movement mov;
-                            mov.fromX = m_selX;
-                            mov.fromY = m_selY;
-                            mov.toX = ix;
-                            mov.toY = iy;
-                            mov.progress = 0.0f;
-                            m_movements.push_back(mov);
-                            //m_hasSelection = false;
-                            //m_infoLabel->SetActive(false);
-                            SDL_Log("Movement started from (%d,%d) to (%d,%d)",
-                                mov.fromX, mov.fromY, mov.toX, mov.toY);
+                            SDL_Log("Unit moved to (%d,%d)", ix, iy);
                         }
                     }
                     return;
@@ -609,7 +600,7 @@ for (const auto& mov : m_movements) {
                     ZoomAt(m_width/2.0f, m_height/2.0f, factor);
                 }
             }
-            if (m_speedMode != 0) {
+            /*if (m_speedMode != 0) {
                 float speedFactor = 1.0f;
                 if (m_speedMode == 2) speedFactor = 6.0f;
                 else if (m_speedMode == 3) speedFactor = 12.0f;
@@ -661,7 +652,7 @@ for (const auto& mov : m_movements) {
                         }
                     }
                 }
-            }
+            }*/
         }
 
         void ZoomAt(float mouseX, float mouseY, float factor) {
@@ -745,7 +736,7 @@ for (const auto& mov : m_movements) {
         std::unique_ptr<Button> m_upgradeButton;
         std::unique_ptr<Button> m_recruitButton;
         uint16_t m_playerCapitalX = 0, m_playerCapitalY = 0;
-        //time
+        /*time
         float m_gameTimeHours;
         int m_speedMode;
         float m_progressBarX, m_progressBarY, m_progressBarW, m_progressBarH;
@@ -755,9 +746,10 @@ for (const auto& mov : m_movements) {
         int m_day;
         std::unique_ptr<Label> m_calendarLabel;
         static constexpr float MOVE_DURATION_HOURS = 12.0f;
+        */
         std::vector<SDL_Color> m_playerColors;
         int m_nextUnitId = 1;
-        struct Movement {
+        /*struct Movement {
             int fromX, fromY;
             int toX, toY;
             float progress;
@@ -774,7 +766,7 @@ for (const auto& mov : m_movements) {
                 if (m.toX == x && m.toY == y) return true;
             }
             return false;
-        }
+        }*/
         bool CanUpgrade() const {
             return m_hasSelection && 
                 m_selX == m_playerCapitalX && 

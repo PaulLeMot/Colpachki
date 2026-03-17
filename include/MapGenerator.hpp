@@ -30,7 +30,7 @@ public:
     MapGenerator(std::mt19937& rng) : m_rng(rng) {}
 
     void CreateMap(std::vector<Tile>& Map, std::vector<float>& heightMap,
-                   std::vector<int>& perm, int N) {
+                std::vector<int>& perm, int N) {
         std::vector<int> permutation(256);
         for (int i = 0; i < 256; ++i) permutation[i] = i;
         std::shuffle(permutation.begin(), permutation.end(), m_rng);
@@ -136,45 +136,16 @@ public:
             for (int j = 0; j < N; ++j) {
                 float raw = rawValues[i * N + j];
                 int biome = (raw > threshold) ? 1 : 0;
-                int zone = -1;
-
-                if (biome == 0) {
-                    float pos = (float)i / N;
-                    float p = pos <= 0.5f ? pos : 1.0f - pos;
-
-                    const float borders[] = {0.1f, 0.2f, 0.3f, 0.4f, 0.47f};
-                    const float blend_width = 0.02f;
-
-                    int main_zone;
-                    if (p <= borders[0]) main_zone = 0;
-                    else if (p <= borders[1]) main_zone = 1;
-                    else if (p <= borders[2]) main_zone = 2;
-                    else if (p <= borders[3]) main_zone = 3;
-                    else if (p <= borders[4]) main_zone = 4;
-                    else main_zone = 5;
-
-                    int selected_zone = main_zone;
-
-                    for (int b = 0; b < 5; ++b) {
-                        if (p >= borders[b] - blend_width && p <= borders[b] + blend_width) {
-                            float t = (p - (borders[b] - blend_width)) / (2.0f * blend_width);
-                            std::uniform_real_distribution<float> dis(0.0f, 1.0f);
-                            float rnd = dis(m_rng);
-                            selected_zone = (rnd < t) ? b + 1 : b;
-                            break;
-                        }
-                    }
-                    zone = selected_zone;
-                }
+                int zone = (biome == 0) ? 3 : -1; // все сухие тайлы получают один биом (зона 3)
 
                 Map[i * N + j] = {static_cast<uint16_t>(i), static_cast<uint16_t>(j),
-                  static_cast<uint8_t>(biome), static_cast<int8_t>(zone),
-                  false, false, 0, {0,0,0,0}, {}, -1};
+                                static_cast<uint8_t>(biome), static_cast<int8_t>(zone),
+                                false, false, 0, {0,0,0,0}, {}, -1};
             }
         }
         perm = p;
     }
-
+/*
     void SmoothClimate(std::vector<Tile>& Map, int N, int iterations) {
         std::vector<Tile> newMap = Map;
         for (int iter = 0; iter < iterations; ++iter) {
@@ -284,7 +255,7 @@ public:
             std::swap(Map, newMap);
         }
     }
-
+*/
     void GenerateForest(std::vector<Tile>& Map, const std::vector<int>& perm, int N) {
         if (perm.empty()) return;
 
@@ -429,7 +400,7 @@ public:
             }
         }
     }
-
+/*
     void AdjustMountainZones(std::vector<Tile>& Map, int N) {
         std::vector<Tile> newMap = Map;
         for (int i = 0; i < N; ++i) {
@@ -463,7 +434,7 @@ public:
         }
         Map = std::move(newMap);
     }
-
+*/
 void GenerateCapitals(std::vector<Tile>& Map, int N) {
     const int targetCount = 100;
     const float minDist = 10.0f;
@@ -846,7 +817,7 @@ void GenerateCapitals(std::vector<Tile>& Map, int N) {
         }
         SDL_Log("Total river segments: %zu", riverSegments.size());
     }
-
+/*
     void DesrtifyJungles(std::vector<Tile>& Map,
                          const std::vector<std::pair<SDL_Point, SDL_Point>>& riverSegments,
                          int N) {
@@ -973,7 +944,7 @@ void GenerateCapitals(std::vector<Tile>& Map, int N) {
         }
         Map = std::move(newMap);
     }
-
+*/
     void RemoveIsolatedMountains(std::vector<Tile>& Map, int N) {
         std::vector<Tile> newMap = Map;
         for (int i = 0; i < N; ++i) {
